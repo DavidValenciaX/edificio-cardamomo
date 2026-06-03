@@ -1,0 +1,132 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && (
+        request.auth.token.email_verified == true || 
+        request.auth.token.email == 'edificiocardamomo@gmail.com'
+      );
+    }
+
+    function isAdmin() {
+      return isEmailVerified() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+        request.auth.token.email == 'edificiocardamomo@gmail.com'
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Entity validation blueprints
+    function isValidUser(data) {
+      return data.uid == request.auth.uid
+        && data.email is string
+        && data.email.size() <= 200
+        && (data.role == 'guest' || data.role == 'admin');
+    }
+
+    function isValidRoom(data) {
+      return data.name is string && data.name.size() <= 150
+        && data.description is string && data.description.size() <= 3000
+        && data.capacity is int && data.capacity >= 1 && data.capacity <= 30
+        && data.pricePerNight is number && data.pricePerNight > 0
+        && data.images is list && data.images.size() <= 10
+        && data.airbnb_ical_url is string && data.airbnb_ical_url.size() <= 1000
+        && data.booking_ical_url is string && data.booking_ical_url.size() <= 1000
+        && data.blockedDates is list && data.blockedDates.size() <= 1000;
+    }
+
+    function isValidBooking(data) {
+      return data.roomId is string && data.roomId.size() <= 128
+        && data.userId == request.auth.uid
+        && data.checkIn is string && data.checkIn.size() == 10
+        && data.checkOut is string && data.checkOut.size() == 10
+        && (data.status == 'confirmed' || data.status == 'cancelled')
+        && data.totalPrice is number && data.totalPrice > 0
+        && data.createdAt == request.time;
+    }
+
+    function isValidSettings(data) {
+      return data.hotelLogoUrl is string && data.hotelLogoUrl.size() <= 2048
+        && data.notificationConfig is map
+        && data.notificationConfig.emailEnabled is bool
+        && data.notificationConfig.emailDestination is string && data.notificationConfig.emailDestination.size() <= 200
+        && data.notificationConfig.whatsappEnabled is bool
+        && data.notificationConfig.whatsappDestination is string && data.notificationConfig.whatsappDestination.size() <= 100
+        && data.notificationConfig.smsEnabled is bool
+        && data.notificationConfig.smsDestination is string && data.notificationConfig.smsDestination.size() <= 100;
+    }
+
+    // MATCHES
+    
+    // USERS
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && (
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ADMINS EXPLICIT COLLECTION
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if false; 
+    }
+
+    // ROOMS
+    match /rooms/{roomId} {
+      allow get: if true; 
+      allow list: if true; 
+      allow create: if isAdmin() && isValidRoom(request.resource.data) && isValidId(roomId);
+      allow update: if (isAdmin() && isValidRoom(request.resource.data)) || (
+        // Guests/Systems can only update blockedDates when reserving
+        isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['blockedDates'])
+        && request.resource.data.blockedDates is list
+      );
+      allow delete: if isAdmin();
+    }
+
+    // BOOKINGS
+    match /bookings/{bookingId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() 
+        && isValidBooking(request.resource.data) 
+        && isValidId(bookingId)
+        && exists(/databases/$(database)/documents/rooms/$(request.resource.data.roomId));
+      allow update: if isSignedIn() && (
+        // Guests can cancel their own bookings
+        (resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) && request.resource.data.status == 'cancelled')
+        || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // SETTINGS
+    match /settings/{docId} {
+      allow get: if true; 
+      allow write: if isAdmin() && isValidSettings(request.resource.data);
+    }
+  }
+}

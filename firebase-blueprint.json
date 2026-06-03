@@ -1,0 +1,88 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role definition",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth User UID" },
+        "email": { "type": "string", "description": "Email address" },
+        "displayName": { "type": "string", "description": "Full name" },
+        "role": { "type": "string", "enum": ["guest", "admin"], "description": "Role in the system" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Room": {
+      "title": "Room",
+      "description": "Apartastudio details, capacity, prices, and external calendar settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Document ID matching the room structure" },
+        "name": { "type": "string", "description": "Name or title of the room" },
+        "description": { "type": "string", "description": "Full descriptions and services" },
+        "capacity": { "type": "number", "description": "Maximum number of guests" },
+        "pricePerNight": { "type": "number", "description": "Price per night in USD / COP" },
+        "images": { "type": "array", "description": "List of URLs for photos of the room" },
+        "airbnb_ical_url": { "type": "string", "description": "Airbnb iCal URL to sync from" },
+        "booking_ical_url": { "type": "string", "description": "Booking.com iCal URL to sync from" },
+        "blockedDates": { "type": "array", "description": "List of dates (YYYY-MM-DD) that are occupied/blocked" }
+      },
+      "required": ["id", "name", "pricePerNight", "capacity"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Reservation made internally within the application",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Primary key / system reservation number" },
+        "roomId": { "type": "string", "description": "ID of the reserved room" },
+        "userId": { "type": "string", "description": "User UID who made the reservation" },
+        "checkIn": { "type": "string", "format": "date", "description": "Start date (YYYY-MM-DD)" },
+        "checkOut": { "type": "string", "format": "date", "description": "End date (YYYY-MM-DD)" },
+        "status": { "type": "string", "enum": ["confirmed", "cancelled"], "description": "Reservation status" },
+        "totalPrice": { "type": "number", "description": "Grand total based on dates and price" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["id", "roomId", "userId", "checkIn", "checkOut", "status", "totalPrice", "createdAt"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Global settings for hotel logos and notification triggers",
+      "type": "object",
+      "properties": {
+        "hotelLogoUrl": { "type": "string", "description": "Logo of the Edificio Cardamomo hotel" },
+        "notificationConfig": {
+          "type": "object",
+          "description": "Configuration to enable channels & set destinations",
+          "properties": {
+            "emailEnabled": { "type": "boolean" },
+            "emailDestination": { "type": "string" },
+            "whatsappEnabled": { "type": "boolean" },
+            "whatsappDestination": { "type": "string" },
+            "smsEnabled": { "type": "boolean" },
+            "smsDestination": { "type": "string" }
+          }
+        }
+      },
+      "required": ["hotelLogoUrl", "notificationConfig"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Users registry"
+    },
+    "rooms/{roomId}": {
+      "schema": "Room",
+      "description": "Hotel accommodation options"
+    },
+    "bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Apartastudio reservation registry"
+    },
+    "settings/global": {
+      "schema": "Settings",
+      "description": "Universal hotel configurations"
+    }
+  }
+}
