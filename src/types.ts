@@ -17,6 +17,8 @@ export interface Room {
   blockedDates: string[]; // Formato YYYY-MM-DD
 }
 
+import type { Timestamp } from 'firebase/firestore';
+
 export interface Booking {
   id: string;
   roomId: string;
@@ -27,7 +29,7 @@ export interface Booking {
   checkOut: string; // Formato YYYY-MM-DD
   status: 'confirmed' | 'cancelled';
   totalPrice: number;
-  createdAt: string; // ISO String
+  createdAt: string | Timestamp;
 }
 
 export interface NotificationConfig {

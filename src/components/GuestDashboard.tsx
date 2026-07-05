@@ -1,14 +1,15 @@
 import { useState, useEffect } from "react";
-import { 
-  collection, 
-  getDocs, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  query, 
+import {
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  query,
   where,
-  arrayUnion
+  serverTimestamp,
+  Timestamp
 } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { Room, Booking, UserProfile } from "../types";
@@ -69,8 +70,16 @@ export default function GuestDashboard({
       snap.forEach((doc) => {
         list.push({ id: doc.id, ...doc.data() });
       });
-      // Sort by creation datetime latest first
-      list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      // Sort by creation datetime latest first. createdAt may be an ISO string
+      // (legacy) or a Firestore Timestamp (serverTimestamp writes).
+      const toMillis = (v: any): number => {
+        if (!v) return 0;
+        if (v instanceof Timestamp) return v.toMillis();
+        if (v && typeof v === "object" && "seconds" in v) return v.seconds * 1000;
+        if (typeof v === "string") return new Date(v).getTime();
+        return 0;
+      };
+      list.sort((a, b) => toMillis(b.createdAt) - toMillis(a.createdAt));
       setMyBookings(list);
     } catch (err) {
       console.error("Error loading user bookings:", err);
@@ -209,11 +218,13 @@ export default function GuestDashboard({
       checkOut,
       status: "confirmed",
       totalPrice: totalPriceEstimation,
-      createdAt: new Date().toISOString()
+      createdAt: serverTimestamp() as any
     };
 
     try {
-      // 1. Save Reservation Document inside bookings
+      // 1. Save Reservation Document inside bookings.
+      // serverTimestamp() resolves server-side and matches the Firestore rule
+      // `data.createdAt == request.time`, so the write is accepted.
       const bookingDocRef = doc(db, "bookings", bookingId);
       await setDoc(bookingDocRef, newBooking);
 
@@ -239,14 +250,20 @@ export default function GuestDashboard({
         blockedDates: updatedBlockedList
       });
 
-      // 4. Trigger Server Side Notification Dispatch
+      // 4. Trigger Server Side Notification Dispatch.
+      // serverTimestamp() is a sentinel that doesn't serialize to JSON, so send
+      // a plain ISO string for the notification body (used only for logging).
       try {
         console.log("Triggering server side alerts...");
+        const bookingPayload = {
+          ...newBooking,
+          createdAt: new Date().toISOString()
+        };
         const response = await fetch("/api/notify-booking", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            booking: newBooking,
+            booking: bookingPayload,
             roomDetails: activeRoom,
             userDetails: userProfile
           })
