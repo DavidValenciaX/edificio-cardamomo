@@ -224,10 +224,10 @@ export default function App() {
         <div className="max-w-md md:max-w-4xl lg:max-w-7xl mx-auto flex flex-col items-center gap-1 md:flex-row md:justify-between px-2 md:px-4">
           <div className="flex items-center gap-1.5 justify-center text-[10px] text-dark-muted font-bold uppercase tracking-widest leading-none">
             <Award className="w-4.5 h-4.5 text-secondary" />
-            <span>Edificio Cardamomo Suites & Deco</span>
+            <span>Edificio Cardamomo</span>
           </div>
           <span className="text-[9px] text-dark-muted/65 italic font-medium mt-1 md:mt-0 font-serif">
-            © 2026 Reservas Móviles de Lujo. Medellín, Colombia.
+            © 2026 Reservas Móviles de Lujo. Neiva, Huila, Colombia.
           </span>
         </div>
       </footer>

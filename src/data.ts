@@ -50,8 +50,8 @@ export const DEFAULT_SETTINGS: Settings = {
     emailEnabled: true,
     emailDestination: "edificiocardamomo@gmail.com",
     whatsappEnabled: true,
-    whatsappDestination: "+573104567890",
+    whatsappDestination: "+573188198842",
     smsEnabled: false,
-    smsDestination: "+573104567890"
+    smsDestination: "+573188198842"
   }
 };

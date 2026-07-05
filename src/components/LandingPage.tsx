@@ -1,4 +1,4 @@
-import { Calendar, ChevronRight, MapPin, Phone, ShieldCheck, Star, Wifi, Coffee, Compass } from "lucide-react";
+import { Calendar, ChevronRight, MapPin, Phone, ShieldCheck, Star, Wifi, Coffee, Compass, ExternalLink } from "lucide-react";
 import { Room } from "../types";
 
 interface LandingPageProps {
@@ -91,7 +91,7 @@ export default function LandingPage({ rooms, onSelectRoom, onLoginClick, isLogge
                     {room.name}
                   </h3>
                   <span className="text-[8px] md:text-[9px] text-secondary font-mono uppercase tracking-widest block font-bold mt-0.5">
-                    El Poblado, Medellín
+                    Neiva, Huila
                   </span>
                 </div>
                 <p className="text-[11px] md:text-xs text-dark-muted line-clamp-2 leading-relaxed font-sans">
@@ -157,7 +157,7 @@ export default function LandingPage({ rooms, onSelectRoom, onLoginClick, isLogge
             <Compass className="w-5 h-5 text-primary mt-0.5 shrink-0" />
             <div>
               <span className="font-semibold text-xs text-dark block leading-tight">Ubicación Clave</span>
-              <span className="text-[10px] text-dark-muted mt-1 block">Rodeado de galerías, café de especialidad y gastronomía.</span>
+              <span className="text-[10px] text-dark-muted mt-1 block">Cerca al Unico y al aeropuerto Benito Salas.</span>
             </div>
           </div>
         </div>
@@ -170,34 +170,23 @@ export default function LandingPage({ rooms, onSelectRoom, onLoginClick, isLogge
             Ubicación y Contacto
           </h2>
           <p className="text-[10px] md:text-xs text-dark-muted font-medium mt-1">
-            Visítanos en la zona más exclusiva, caminable y segura del barrio El Poblado
+            Cerca al centro comercial Unico y al aeropuerto Benito Salas, en Neiva, Huila
           </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10 items-start mt-6">
-          {/* Styled Static Map Mockup */}
+          {/* Google Maps Embed */}
           <div className="w-full h-[180px] md:h-[260px] rounded-2xl border border-warm-border overflow-hidden relative shadow-inner">
-            {/* Mock Map Background Canvas */}
-            <div className="absolute inset-0 bg-zinc-200 flex flex-col items-center justify-center">
-              <div className="absolute inset-0 bg-[radial-gradient(#d1d5db_1.2px,transparent_1.2px)] [background-size:16px_16px] opacity-70"></div>
-              {/* Visual streets */}
-              <div className="absolute h-3.5 w-full bg-white top-1/4"></div>
-              <div className="absolute h-3.5 w-full bg-white bottom-1/3"></div>
-              <div className="absolute w-3.5 h-full bg-white left-1/3"></div>
-              <div className="absolute w-3.5 h-full bg-white right-1/4"></div>
-              
-              {/* Map Pin Anchor */}
-              <div className="absolute left-[45%] top-[40%] text-center animate-bounce">
-                <MapPin className="w-9 h-9 text-secondary fill-accent stroke-secondary stroke-2" />
-                <span className="absolute -top-7 -left-10 bg-dark text-[8.5px] font-bold px-2 py-0.5 text-accent rounded-md shadow border border-accent/20 whitespace-nowrap">
-                  Edificio Cardamomo
-                </span>
-              </div>
-            </div>
-            
-            <div className="absolute bottom-2.5 right-2.5 bg-white/90 backdrop-blur-sm shadow border border-warm-border p-1.5 rounded text-[8.5px] font-mono text-dark-muted">
-              GPS: Calle 10-A # 45
-            </div>
+            <iframe
+              title="Ubicación Edificio Cardamomo"
+              src="https://www.google.com/maps/embed?pb=!1m14!1m8!1m3!1d7250.263501349435!2d-75.2974845870908!3d2.9599551587499766!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x8e3b752dcf33823b%3A0x44c2cf5d6a0a6aa2!2sEdificio%20Cardamomo!5e0!3m2!1ses!2sco!4v1783220077828!5m2!1ses!2sco"
+              width="100%"
+              height="100%"
+              style={{ border: 0 }}
+              allowFullScreen
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
+            />
           </div>
 
           {/* Contact Links */}
@@ -208,7 +197,7 @@ export default function LandingPage({ rooms, onSelectRoom, onLoginClick, isLogge
               </div>
               <div>
                 <span className="text-[10px] text-dark-muted uppercase font-bold block leading-none">Dirección de Firma</span>
-                <span className="text-xs md:text-sm font-semibold text-dark block mt-1.5 leading-relaxed">Calle 10-A # 45-20, El Poblado, Medellín, Colombia</span>
+                <span className="text-xs md:text-sm font-semibold text-dark block mt-1.5 leading-relaxed">Calle 61 #1b-75, Neiva, Huila, Colombia</span>
               </div>
             </div>
 
@@ -218,7 +207,24 @@ export default function LandingPage({ rooms, onSelectRoom, onLoginClick, isLogge
               </div>
               <div>
                 <span className="text-[10px] text-dark-muted uppercase font-bold block leading-none">Reservas Telefónicas / WhatsApp Directo</span>
-                <span className="text-xs md:text-sm font-semibold text-dark block mt-1.5 leading-relaxed">+57 322 890 4567</span>
+                <span className="text-xs md:text-sm font-semibold text-dark block mt-1.5 leading-relaxed">+57 318 819 88 42</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-warm-border/50 shadow-sm">
+              <div className="w-10 h-10 rounded-full bg-secondary/10 flex items-center justify-center text-secondary shrink-0">
+                <ExternalLink className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <span className="text-[10px] text-dark-muted uppercase font-bold block leading-none">Reserva Directa en Plataformas</span>
+                <div className="flex flex-col gap-1 mt-1.5">
+                  <a href="https://www.booking.com/hotel/co/edificio-cardamomo.es.html" target="_blank" rel="noopener noreferrer" className="text-xs md:text-sm font-semibold text-secondary hover:text-primary transition-colors flex items-center gap-1 leading-relaxed">
+                    Booking.com <ExternalLink className="w-3 h-3" />
+                  </a>
+                  <a href="https://www.airbnb.com.co/p/edificio-cardamomo" target="_blank" rel="noopener noreferrer" className="text-xs md:text-sm font-semibold text-secondary hover:text-primary transition-colors flex items-center gap-1 leading-relaxed">
+                    Airbnb <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
               </div>
             </div>
           </div>

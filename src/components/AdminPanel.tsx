@@ -60,9 +60,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
             emailEnabled: true,
             emailDestination: "edificiocardamomo@gmail.com",
             whatsappEnabled: true,
-            whatsappDestination: "+573104567890",
+            whatsappDestination: "+573188198842",
             smsEnabled: false,
-            smsDestination: "+573104567890"
+            smsDestination: "+573188198842"
           }
         };
         await setDoc(doc(db, "settings", "global"), defaultSettings);

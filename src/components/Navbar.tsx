@@ -31,11 +31,11 @@ export default function Navbar({
             className="w-10 h-10 rounded-full object-cover border border-secondary"
           />
           <div>
+            <span className="text-[9px] text-dark-muted font-mono uppercase tracking-widest block -mt-1 font-semibold">
+              Edificio
+            </span>
             <span className="font-display font-bold tracking-widest text-secondary text-sm block uppercase">
               Cardamomo
-            </span>
-            <span className="text-[9px] text-dark-muted font-mono uppercase tracking-widest block -mt-1 font-semibold">
-              Suites & Deco
             </span>
           </div>
         </div>
