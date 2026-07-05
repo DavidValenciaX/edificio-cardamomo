@@ -1,13 +1,37 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, getDoc, updateDoc, setDoc, query, where } from 'firebase/firestore';
-import firebaseConfig from './firebase-applet-config.json';
+import {
+  initializeApp,
+  getApps,
+  getApp,
+  applicationDefault,
+} from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
+import firebaseConfig from "./firebase-applet-config.json";
 
-// Initialize Firebase client on the server side
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId || '(default)');
+// Initialize Firebase Admin SDK (server-side).
+// Uses Application Default Credentials: GOOGLE_APPLICATION_CREDENTIALS in local
+// dev (service account JSON), or the runtime service account in Cloud Functions/Cloud Run.
+// Admin bypasses Firestore security rules, so server endpoints are not subject to
+// request.auth checks.
+try {
+  if (!getApps().length) {
+    initializeApp({
+      projectId: firebaseConfig.projectId,
+      credential: applicationDefault(),
+    });
+  }
+} catch (err) {
+  console.error(
+    "[firebase-admin] Failed to initialize. For local dev set GOOGLE_APPLICATION_CREDENTIALS to a service account JSON path (or run `gcloud auth application-default login`).",
+    err
+  );
+  process.exit(1);
+}
+
+const db = getFirestore(getApp(), firebaseConfig.firestoreDatabaseId || "(default)");
 
 const app = express();
 app.use(express.json());
@@ -20,7 +44,26 @@ function formatToICalDate(dateStr: string, isAllDay: boolean = true): string {
   if (isAllDay) {
     return `VALUE=DATE:${dateStrClean}`;
   }
-  return dateStrClean + 'T000000Z';
+  return dateStrClean + "T000000Z";
+}
+
+// Normalize createdAt into an iCal DTSTAMP string. Handles both ISO strings (legacy
+// frontend writes) and Firestore Timestamps (admin SDK / serverTimestamp writes).
+function toICalStamp(createdAt: unknown): string {
+  if (!createdAt) return "20260602T001614Z";
+  let date: Date;
+  if (createdAt instanceof Date) {
+    date = createdAt;
+  } else if (typeof createdAt === "string") {
+    date = new Date(createdAt);
+  } else if (createdAt && typeof createdAt === "object" && "toDate" in createdAt && typeof (createdAt as any).toDate === "function") {
+    date = (createdAt as any).toDate();
+  } else if (createdAt && typeof createdAt === "object" && "seconds" in createdAt) {
+    date = new Date((createdAt as any).seconds * 1000);
+  } else {
+    date = new Date();
+  }
+  return date.toISOString().replace(/[-:T]/g, "").slice(0, 15) + "Z";
 }
 
 // -------------------------------------------------------------
@@ -32,35 +75,32 @@ app.get("/api/rooms/:roomId/ical", async (req, res) => {
     console.log(`Generating iCal feed for room: ${roomId}`);
     
     // Fetch room
-    const roomRef = doc(db, 'rooms', roomId);
-    const roomSnap = await getDoc(roomRef);
-    if (!roomSnap.exists()) {
+    const roomSnap = await db.collection("rooms").doc(roomId).get();
+    if (!roomSnap.exists) {
       return res.status(404).send("Room not found");
     }
     const roomData = roomSnap.data();
 
     // Fetch confirmed bookings for this room
-    const bookingsSnap = await getDocs(
-      query(
-        collection(db, 'bookings'), 
-        where('roomId', '==', roomId),
-        where('status', '==', 'confirmed')
-      )
-    );
+    const bookingsSnap = await db
+      .collection("bookings")
+      .where("roomId", "==", roomId)
+      .where("status", "==", "confirmed")
+      .get();
 
     let icalContent = "BEGIN:VCALENDAR\r\n";
     icalContent += "VERSION:2.0\r\n";
     icalContent += `PRODID:-//Edificio Cardamomo//Calendar Sync//ES\r\n`;
     icalContent += "CALSCALE:GREGORIAN\r\n";
     icalContent += `METHOD:PUBLISH\r\n`;
-    icalContent += `X-WR-CALNAME:Cardamomo - ${roomData.name || 'Apartastudio'}\r\n`;
+    icalContent += `X-WR-CALNAME:Cardamomo - ${roomData?.name || "Apartastudio"}\r\n`;
 
     bookingsSnap.forEach((bookingDoc) => {
       const b = bookingDoc.data();
       const checkInICal = formatToICalDate(b.checkIn);
       // For iCal end dates, DTEND is exclusive. Airbnb/Booking expect DTEND to be the check-out day.
       const checkOutICal = formatToICalDate(b.checkOut);
-      const stamp = b.createdAt ? b.createdAt.replace(/[-:T]/g, '').slice(0, 15) + 'Z' : '20260602T001614Z';
+      const stamp = toICalStamp(b.createdAt);
 
       icalContent += "BEGIN:VEVENT\r\n";
       icalContent += `UID:booking-${b.id || bookingDoc.id}@edificiocardamomo.com\r\n`;
@@ -148,7 +188,7 @@ function parseICalContent(icalText: string): string[] {
 app.post("/api/sync-ical", async (req, res) => {
   try {
     console.log("iCal sync triggered manually or by cron...");
-    const roomsSnap = await getDocs(collection(db, 'rooms'));
+    const roomsSnap = await db.collection("rooms").get();
     const results: any[] = [];
 
     for (const roomDoc of roomsSnap.docs) {
@@ -157,13 +197,11 @@ app.post("/api/sync-ical", async (req, res) => {
       let newBlockedDates: string[] = [];
 
       // We parse actual local app bookings to make sure they remain blocked
-      const bookingsSnap = await getDocs(
-        query(
-          collection(db, 'bookings'), 
-          where('roomId', '==', roomId),
-          where('status', '==', 'confirmed')
-        )
-      );
+      const bookingsSnap = await db
+        .collection("bookings")
+        .where("roomId", "==", roomId)
+        .where("status", "==", "confirmed")
+        .get();
 
       bookingsSnap.forEach((bookingDoc) => {
         const b = bookingDoc.data();
@@ -212,10 +250,9 @@ app.post("/api/sync-ical", async (req, res) => {
       // Deduplicate result dates
       const uniqueBlockedDates = [...new Set(newBlockedDates)].sort();
 
-      // Update in Firestore
-      const roomRef = doc(db, 'rooms', roomId);
-      await updateDoc(roomRef, { blockedDates: uniqueBlockedDates });
-      
+      // Update in Firestore (admin SDK bypasses security rules)
+      await db.collection("rooms").doc(roomId).update({ blockedDates: uniqueBlockedDates });
+
       results.push({
         roomId,
         roomName: room.name,
@@ -243,8 +280,7 @@ app.post("/api/notify-booking", async (req, res) => {
     console.log("Analyzing notification setup fromsettings/global...");
     
     // Fetch settings/global configuration
-    const settingsRef = doc(db, 'settings', 'global');
-    const settingsSnap = await getDoc(settingsRef);
+    const settingsSnap = await db.collection("settings").doc("global").get();
     let config = {
       emailEnabled: true,
       emailDestination: "edificiocardamomo@gmail.com",
@@ -254,8 +290,8 @@ app.post("/api/notify-booking", async (req, res) => {
       smsDestination: "+573000000000"
     };
 
-    if (settingsSnap.exists()) {
-      const s = settingsSnap.data();
+    if (settingsSnap.exists) {
+      const s = settingsSnap.data()!;
       if (s.notificationConfig) {
         config = { ...config, ...s.notificationConfig };
       }
