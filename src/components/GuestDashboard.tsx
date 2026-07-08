@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { signInAnonymously } from "firebase/auth";
 import {
   collection,
   getDocs,
@@ -11,16 +12,17 @@ import {
   serverTimestamp,
   Timestamp
 } from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "../lib/firebase";
-import { Room, Booking, UserProfile } from "../types";
+import { auth, db, handleFirestoreError, OperationType } from "../lib/firebase";
+import { Room, Booking, UserProfile, GuestContact } from "../types";
 import { Calendar as CalendarIcon, Check, Users, DollarSign, ArrowRight, ShieldCheck, Info, X } from "lucide-react";
 
 interface GuestDashboardProps {
   rooms: Room[];
-  userProfile: UserProfile;
+  userProfile: UserProfile | null;
   selectedRoomId: string | null;
   onSelectRoomId: (roomId: string | null) => void;
   onRefreshRooms: () => void;
+  onTemporaryProfileReady?: (profile: UserProfile) => void;
 }
 
 export default function GuestDashboard({
@@ -29,6 +31,7 @@ export default function GuestDashboard({
   selectedRoomId,
   onSelectRoomId,
   onRefreshRooms,
+  onTemporaryProfileReady,
 }: GuestDashboardProps) {
   // Active Room State
   const activeRoom = rooms.find(r => r.id === selectedRoomId) || rooms[0] || null;
@@ -44,6 +47,11 @@ export default function GuestDashboard({
   const [bookingError, setBookingError] = useState("");
   const [bookingLoading, setBookingLoading] = useState(false);
   const [successBooking, setSuccessBooking] = useState<Booking | null>(null);
+  const [guestContact, setGuestContact] = useState<GuestContact>({
+    fullName: userProfile?.displayName || "",
+    phone: userProfile?.phone || "",
+    identification: userProfile?.identification || "",
+  });
 
   // My current bookings list
   const [myBookings, setMyBookings] = useState<any[]>([]);
@@ -58,7 +66,21 @@ export default function GuestDashboard({
     }
   }, [selectedRoomId]);
 
+  useEffect(() => {
+    if (!userProfile) return;
+    setGuestContact((current) => ({
+      fullName: current.fullName || userProfile.displayName || "",
+      phone: current.phone || userProfile.phone || "",
+      identification: current.identification || userProfile.identification || "",
+    }));
+  }, [userProfile?.uid]);
+
   const fetchMyBookings = async () => {
+    if (!userProfile) {
+      setMyBookings([]);
+      return;
+    }
+
     setLoadingMyBookings(true);
     try {
       const q = query(
@@ -90,7 +112,7 @@ export default function GuestDashboard({
 
   useEffect(() => {
     fetchMyBookings();
-  }, [userProfile.uid, successBooking]);
+  }, [userProfile?.uid, successBooking]);
 
   if (!activeRoom) {
     return (
@@ -201,27 +223,96 @@ export default function GuestDashboard({
     totalPriceEstimation = nightsCount * activeRoom.pricePerNight;
   }
 
+  const getValidatedGuestContact = (): GuestContact | null => {
+    const contact = {
+      fullName: guestContact.fullName.trim(),
+      phone: guestContact.phone.trim(),
+      identification: guestContact.identification.trim(),
+    };
+
+    if (!contact.fullName || !contact.phone || !contact.identification) {
+      setBookingError("Para reservar necesitamos nombre completo, celular e identificación.");
+      return null;
+    }
+
+    if (contact.fullName.length < 3) {
+      setBookingError("Ingrese el nombre completo del huésped principal.");
+      return null;
+    }
+
+    if (contact.phone.length < 7) {
+      setBookingError("Ingrese un celular válido para confirmar la reserva.");
+      return null;
+    }
+
+    return contact;
+  };
+
+  const resolveAuthProvider = (): UserProfile["authProvider"] => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return "anonymous";
+    if (currentUser.isAnonymous) return "anonymous";
+    const providerId = currentUser.providerData[0]?.providerId;
+    if (providerId === "google.com") return "google";
+    if (providerId === "password") return "password";
+    return userProfile?.authProvider || "unknown";
+  };
+
+  const ensureBookingUserProfile = async (contact: GuestContact): Promise<UserProfile> => {
+    const currentUser = auth.currentUser || (await signInAnonymously(auth)).user;
+    const isTemporary = currentUser.isAnonymous;
+    const profile: UserProfile = {
+      uid: currentUser.uid,
+      email: currentUser.email || userProfile?.email || "",
+      displayName: contact.fullName,
+      role: userProfile?.role || "guest",
+      phone: contact.phone,
+      identification: contact.identification,
+      isTemporary,
+      authProvider: resolveAuthProvider(),
+    };
+
+    await setDoc(doc(db, "users", currentUser.uid), {
+      ...profile,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
+    onTemporaryProfileReady?.(profile);
+    return profile;
+  };
+
   // Submit active booking
   const handleProceedBooking = async () => {
     if (!checkIn || !checkOut || nightsCount === 0) return;
     setBookingLoading(true);
     setBookingError("");
 
+    const contact = getValidatedGuestContact();
+    if (!contact) {
+      setBookingLoading(false);
+      return;
+    }
+
     const bookingId = "res-" + Math.random().toString(36).substring(2, 10).toUpperCase();
-    const newBooking: Booking = {
-      id: bookingId,
-      roomId: activeRoom.id,
-      userId: userProfile.uid,
-      userEmail: userProfile.email,
-      userDisplayName: userProfile.displayName,
-      checkIn,
-      checkOut,
-      status: "confirmed",
-      totalPrice: totalPriceEstimation,
-      createdAt: serverTimestamp() as any
-    };
 
     try {
+      const bookingProfile = await ensureBookingUserProfile(contact);
+      const newBooking: Booking = {
+        id: bookingId,
+        roomId: activeRoom.id,
+        userId: bookingProfile.uid,
+        userEmail: bookingProfile.email,
+        userDisplayName: contact.fullName,
+        userStatus: bookingProfile.isTemporary ? "temporary" : "registered",
+        guestContact: contact,
+        checkIn,
+        checkOut,
+        status: "confirmed",
+        totalPrice: totalPriceEstimation,
+        createdAt: serverTimestamp() as any
+      };
+
       // 1. Save Reservation Document inside bookings.
       // serverTimestamp() resolves server-side and matches the Firestore rule
       // `data.createdAt == request.time`, so the write is accepted.
@@ -265,7 +356,12 @@ export default function GuestDashboard({
           body: JSON.stringify({
             booking: bookingPayload,
             roomDetails: activeRoom,
-            userDetails: userProfile
+            userDetails: {
+              ...bookingProfile,
+              displayName: contact.fullName,
+              phone: contact.phone,
+              identification: contact.identification,
+            }
           })
         });
         const notifyData = await response.json();
@@ -353,8 +449,9 @@ export default function GuestDashboard({
         </div>
         
         <div className="w-full md:max-w-xs shrink-0 bg-white p-1 rounded-xl shadow-sm border border-warm-border">
-          <label className="text-[9px] font-bold text-secondary uppercase tracking-widest block mb-1 px-2 pt-1 font-mono">Elegir Apartaestudio</label>
+          <label htmlFor="room-selector" className="text-[9px] font-bold text-secondary uppercase tracking-widest block mb-1 px-2 pt-1 font-mono">Elegir Apartaestudio</label>
           <select
+            id="room-selector"
             value={activeRoom.id}
             onChange={(e) => onSelectRoomId(e.target.value)}
             className="w-full bg-transparent text-xs font-semibold rounded-lg p-2 text-dark focus:outline-none cursor-pointer"
@@ -535,9 +632,44 @@ export default function GuestDashboard({
 
           <div className="h-px bg-warm-border"></div>
 
+          <div className="bg-white border border-warm-border rounded-xl p-3 space-y-3">
+            <div>
+              <h4 className="font-bold text-[11px] text-dark uppercase tracking-wider">
+                Datos básicos del huésped
+              </h4>
+              <p className="text-[9px] text-dark-muted mt-0.5">
+                Puedes reservar sin crear cuenta. Estos datos quedan asociados al invitado temporal.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={guestContact.fullName}
+                onChange={(e) => setGuestContact({ ...guestContact, fullName: e.target.value })}
+                placeholder="Nombre completo"
+                className="w-full bg-warm-card border border-warm-border rounded-lg py-2 px-3 text-xs text-dark font-medium focus:outline-none focus:border-primary"
+              />
+              <input
+                type="tel"
+                value={guestContact.phone}
+                onChange={(e) => setGuestContact({ ...guestContact, phone: e.target.value })}
+                placeholder="Celular / WhatsApp"
+                className="w-full bg-warm-card border border-warm-border rounded-lg py-2 px-3 text-xs text-dark font-medium focus:outline-none focus:border-primary"
+              />
+              <input
+                type="text"
+                value={guestContact.identification}
+                onChange={(e) => setGuestContact({ ...guestContact, identification: e.target.value })}
+                placeholder="Identificación / documento"
+                className="w-full bg-warm-card border border-warm-border rounded-lg py-2 px-3 text-xs text-dark font-medium focus:outline-none focus:border-primary"
+              />
+            </div>
+          </div>
+
           <div className="flex justify-between items-center pt-1">
             <span className="font-bold text-dark text-sm">Costo Total</span>
-            <span className="font-display font-bold text-lg text-primary font-mono leading-none">
+            <span className="font-mono font-bold text-lg text-primary leading-none">
               ${totalPriceEstimation.toLocaleString()} COP
             </span>
           </div>
@@ -567,7 +699,11 @@ export default function GuestDashboard({
       <div className="pt-2">
         <h2 className="font-display font-bold text-sm text-dark mb-3">Mis Reservas Recientes</h2>
         
-        {loadingMyBookings ? (
+        {!userProfile ? (
+          <div className="bg-white border border-warm-border rounded-2xl p-5 text-center text-xs text-dark-muted font-medium">
+            Tu historial aparecerá aquí después de confirmar la reserva como invitado temporal.
+          </div>
+        ) : loadingMyBookings ? (
           <span className="text-xs text-dark-muted font-mono block">Cargando reservas...</span>
         ) : myBookings.length === 0 ? (
           <div className="bg-white border border-warm-border rounded-2xl p-5 text-center text-xs text-dark-muted font-medium">
@@ -637,6 +773,7 @@ export default function GuestDashboard({
           <div className="w-full max-w-sm bg-warm-bg border border-warm-border p-6 rounded-2xl text-center space-y-4 shadow-xl relative">
             <button 
               onClick={() => setSuccessBooking(null)}
+              aria-label="Cerrar confirmación de reserva"
               className="absolute right-4 top-4 p-1 rounded-full bg-warm-card hover:bg-warm-border"
             >
               <X className="w-4 h-4" />

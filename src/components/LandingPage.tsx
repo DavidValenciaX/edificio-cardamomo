@@ -108,11 +108,7 @@ export default function LandingPage({ rooms, onSelectRoom, onLoginClick, isLogge
                   
                   <button
                     onClick={() => {
-                      if (isLoggedIn) {
-                        onSelectRoom(room.id);
-                      } else {
-                        onLoginClick();
-                      }
+                      onSelectRoom(room.id);
                     }}
                     className="flex items-center gap-1 bg-primary hover:bg-primary-hover text-warm-bg text-[10px] md:text-xs uppercase font-bold py-1.5 px-3 md:py-2 md:px-4 rounded transition-all active:scale-95 shadow-sm font-sans tracking-wide"
                   >
@@ -239,7 +235,13 @@ export default function LandingPage({ rooms, onSelectRoom, onLoginClick, isLogge
             className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-warm-bg py-4 rounded-xl font-bold text-sm shadow-md transition-all active:scale-[0.98] uppercase tracking-wider"
           >
             <Calendar className="w-4 h-4" />
-            Ingresa y Reserva en Línea
+            Reserva sin Crear Cuenta
+          </button>
+          <button
+            onClick={onLoginClick}
+            className="w-full mt-3 flex items-center justify-center gap-2 bg-white hover:bg-warm-card text-primary border border-primary/25 py-3 rounded-xl font-bold text-xs shadow-sm transition-all active:scale-[0.98] uppercase tracking-wider"
+          >
+            Ingresar para gestionar reservas
           </button>
         </section>
       )}

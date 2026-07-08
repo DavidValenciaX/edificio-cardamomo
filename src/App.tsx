@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
+import { onAuthStateChanged, signOut, User } from "firebase/auth";
+import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "./lib/firebase";
 import { UserProfile, Room, Settings } from "./types";
 import { DEFAULT_ROOMS, DEFAULT_SETTINGS } from "./data";
@@ -10,6 +10,35 @@ import LandingPage from "./components/LandingPage";
 import GuestDashboard from "./components/GuestDashboard";
 import AdminPanel from "./components/AdminPanel";
 import { ShieldCheck, Calendar, Info, Heart, Award } from "lucide-react";
+
+const ADMIN_EMAIL = (import.meta as any).env?.VITE_ADMIN_EMAIL || "edificiocardamomo@gmail.com";
+
+function buildProfileFromAuthUser(user: User, existingProfile?: Partial<UserProfile>): UserProfile {
+  const role: 'guest' | 'admin' = user.email === ADMIN_EMAIL ? 'admin' : (existingProfile?.role || 'guest');
+  const providerId = user.providerData[0]?.providerId;
+  const authProvider: UserProfile['authProvider'] = user.isAnonymous
+    ? 'anonymous'
+    : providerId === 'google.com'
+      ? 'google'
+      : providerId === 'password'
+        ? 'password'
+        : 'unknown';
+
+  return {
+    uid: user.uid,
+    email: user.email || existingProfile?.email || "",
+    displayName:
+      user.displayName ||
+      existingProfile?.displayName ||
+      user.email?.split('@')[0] ||
+      "Huésped Cardamomo",
+    role,
+    phone: existingProfile?.phone,
+    identification: existingProfile?.identification,
+    isTemporary: user.isAnonymous,
+    authProvider,
+  };
+}
 
 export default function App() {
   const [currentRole, setCurrentRole] = useState<'guest' | 'admin'>('guest');
@@ -32,35 +61,26 @@ export default function App() {
           const userDocRef = doc(db, "users", user.uid);
           const userDocSnap = await getDoc(userDocRef);
           
-          if (userDocSnap.exists()) {
-            const profile = userDocSnap.data() as UserProfile;
-            setUserProfile(profile);
-            setCurrentRole(profile.role);
-          } else {
-            // New user registration
-            const role: 'guest' | 'admin' = (user.email === 'edificiocardamomo@gmail.com') ? 'admin' : 'guest';
-            const profile: UserProfile = {
-              uid: user.uid,
-              email: user.email || "",
-              displayName: user.displayName || user.email?.split('@')[0] || "Huésped Cardamomo",
-              role
-            };
-            await setDoc(userDocRef, profile);
-            setUserProfile(profile);
-            setCurrentRole(role);
-          }
+          const existingProfile = userDocSnap.exists()
+            ? (userDocSnap.data() as UserProfile)
+            : undefined;
+          const profile = buildProfileFromAuthUser(user, existingProfile);
+
+          await setDoc(userDocRef, {
+            ...profile,
+            updatedAt: serverTimestamp(),
+            ...(userDocSnap.exists() ? {} : { createdAt: serverTimestamp() }),
+            ...(!user.isAnonymous && existingProfile?.isTemporary ? { convertedAt: serverTimestamp() } : {}),
+          }, { merge: true });
+
+          setUserProfile(profile);
+          setCurrentRole(profile.role);
         } catch (authError) {
           console.error("Profile sync failed. Using local auth status:", authError);
           // Fallback
-          const role: 'guest' | 'admin' = (user.email === 'edificiocardamomo@gmail.com') ? 'admin' : 'guest';
-          const mockProfile: UserProfile = {
-            uid: user.uid,
-            email: user.email || "",
-            displayName: user.displayName || "Huésped Cardamomo",
-            role
-          };
+          const mockProfile = buildProfileFromAuthUser(user);
           setUserProfile(mockProfile);
-          setCurrentRole(role);
+          setCurrentRole(mockProfile.role);
         }
       } else {
         setUserProfile(null);
@@ -170,31 +190,23 @@ export default function App() {
           <div>
             
             {/* View dispatching */}
-            {!userProfile ? (
-              /* Public general screen */
-              <LandingPage
-                rooms={rooms}
-                onSelectRoom={(roomId) => {
-                  setSelectedRoomId(roomId);
-                  // Since not logged in, trigger signup modal
-                  setIsLoginOpen(true);
-                }}
-                onLoginClick={() => setIsLoginOpen(true)}
-                isLoggedIn={false}
-              />
-            ) : currentRole === 'admin' ? (
+            {currentRole === 'admin' && userProfile ? (
               /* Administrative controls dashboard */
               <AdminPanel
                 rooms={rooms}
                 onRefreshRooms={fetchRoomsAndSettings}
               />
-            ) : (
+            ) : selectedRoomId || userProfile ? (
               /* Interactive Guest Booking console */
               <div className="space-y-4">
                 {/* Notice header */}
                 <div className="bg-primary/10 border-b border-primary/20 px-4 py-3 text-center flex items-center justify-center gap-2 text-xs font-semibold text-dark">
                   <ShieldCheck className="w-4 h-4 text-primary shrink-0" />
-                  <span>Bienvenido, {userProfile.displayName}. Sesión de Huésped Activa.</span>
+                  <span>
+                    {userProfile
+                      ? `Bienvenido, ${userProfile.displayName}. ${userProfile.isTemporary ? "Reserva como invitado temporal." : "Sesión de huésped activa."}`
+                      : "Reserva sin registrarte. Solo necesitaremos tus datos básicos de huésped."}
+                  </span>
                 </div>
 
                 <GuestDashboard
@@ -203,8 +215,19 @@ export default function App() {
                   selectedRoomId={selectedRoomId}
                   onSelectRoomId={setSelectedRoomId}
                   onRefreshRooms={fetchRoomsAndSettings}
+                  onTemporaryProfileReady={setUserProfile}
                 />
               </div>
+            ) : (
+              /* Public general screen */
+              <LandingPage
+                rooms={rooms}
+                onSelectRoom={(roomId) => {
+                  setSelectedRoomId(roomId);
+                }}
+                onLoginClick={() => setIsLoginOpen(true)}
+                isLoggedIn={false}
+              />
             )}
 
           </div>

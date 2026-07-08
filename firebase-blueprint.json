@@ -8,9 +8,13 @@
         "uid": { "type": "string", "description": "Firebase Auth User UID" },
         "email": { "type": "string", "description": "Email address" },
         "displayName": { "type": "string", "description": "Full name" },
-        "role": { "type": "string", "enum": ["guest", "admin"], "description": "Role in the system" }
+        "role": { "type": "string", "enum": ["guest", "admin"], "description": "Role in the system" },
+        "phone": { "type": "string", "description": "Guest phone / WhatsApp number" },
+        "identification": { "type": "string", "description": "Guest identification document" },
+        "isTemporary": { "type": "boolean", "description": "True for anonymous temporary guest profiles" },
+        "authProvider": { "type": "string", "enum": ["anonymous", "password", "google", "unknown"], "description": "Provider used to create or finalize the account" }
       },
-      "required": ["uid", "email", "role"]
+      "required": ["uid", "email", "displayName", "role"]
     },
     "Room": {
       "title": "Room",
@@ -37,13 +41,24 @@
         "id": { "type": "string", "description": "Primary key / system reservation number" },
         "roomId": { "type": "string", "description": "ID of the reserved room" },
         "userId": { "type": "string", "description": "User UID who made the reservation" },
+        "userStatus": { "type": "string", "enum": ["temporary", "registered"], "description": "Whether the booking was made by a temporary guest or a registered user" },
+        "guestContact": {
+          "type": "object",
+          "description": "Required guest contact details captured at booking time",
+          "properties": {
+            "fullName": { "type": "string" },
+            "phone": { "type": "string" },
+            "identification": { "type": "string" }
+          },
+          "required": ["fullName", "phone", "identification"]
+        },
         "checkIn": { "type": "string", "format": "date", "description": "Start date (YYYY-MM-DD)" },
         "checkOut": { "type": "string", "format": "date", "description": "End date (YYYY-MM-DD)" },
         "status": { "type": "string", "enum": ["confirmed", "cancelled"], "description": "Reservation status" },
         "totalPrice": { "type": "number", "description": "Grand total based on dates and price" },
         "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
       },
-      "required": ["id", "roomId", "userId", "checkIn", "checkOut", "status", "totalPrice", "createdAt"]
+      "required": ["id", "roomId", "userId", "guestContact", "checkIn", "checkOut", "status", "totalPrice", "createdAt"]
     },
     "Settings": {
       "title": "Settings",

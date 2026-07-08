@@ -9,6 +9,7 @@ import {
   deleteDoc 
 } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../lib/firebase";
+import { firebaseConfig } from "../lib/firebaseConfig";
 import { Room, Settings, NotificationConfig } from "../types";
 import { 
   Plus, Edit2, Trash2, Settings as SettingsIcon, Bell, RefreshCw, 
@@ -254,7 +255,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
           </h1>
         </div>
         <div className="text-right text-[8px] text-secondary font-mono leading-tight">
-          <span className="font-bold block">PROJECT: rich-pulsar-q6tp2</span>
+          <span className="font-bold block">PROJECT: {firebaseConfig.projectId}</span>
           <span className="block opacity-95">REGION: GLOBAL MULTI</span>
         </div>
       </div>

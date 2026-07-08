@@ -3,6 +3,16 @@ export interface UserProfile {
   email: string;
   displayName: string;
   role: 'guest' | 'admin';
+  phone?: string;
+  identification?: string;
+  isTemporary?: boolean;
+  authProvider?: 'anonymous' | 'password' | 'google' | 'unknown';
+}
+
+export interface GuestContact {
+  fullName: string;
+  phone: string;
+  identification: string;
 }
 
 export interface Room {
@@ -25,6 +35,8 @@ export interface Booking {
   userId: string;
   userEmail?: string;
   userDisplayName?: string;
+  userStatus?: 'temporary' | 'registered';
+  guestContact: GuestContact;
   checkIn: string; // Formato YYYY-MM-DD
   checkOut: string; // Formato YYYY-MM-DD
   status: 'confirmed' | 'cancelled';

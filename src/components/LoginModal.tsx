@@ -4,10 +4,15 @@ import {
   GoogleAuthProvider, 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
-  updateProfile 
+  updateProfile,
+  EmailAuthProvider,
+  linkWithCredential,
+  linkWithPopup,
+  signInWithCredential,
+  User
 } from "firebase/auth";
-import { auth, db, handleFirestoreError, OperationType } from "../lib/firebase";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { auth, db } from "../lib/firebase";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { X, Mail, Lock, User as UserIcon, AlertCircle } from "lucide-react";
 import { UserProfile } from "../types";
 
@@ -15,6 +20,13 @@ interface LoginModalProps {
   onClose: () => void;
   onSuccess: (profile: UserProfile) => void;
 }
+
+const ADMIN_EMAIL = (import.meta as any).env?.VITE_ADMIN_EMAIL || "edificiocardamomo@gmail.com";
+
+type TemporarySession = {
+  uid: string;
+  idToken: string;
+} | null;
 
 export default function LoginModal({ onClose, onSuccess }: LoginModalProps) {
   const [isRegister, setIsRegister] = useState(false);
@@ -24,34 +36,107 @@ export default function LoginModal({ onClose, onSuccess }: LoginModalProps) {
   const [errorMsg, setErrorMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const getTemporarySession = async (): Promise<TemporarySession> => {
+    const currentUser = auth.currentUser;
+    if (!currentUser?.isAnonymous) return null;
+
+    return {
+      uid: currentUser.uid,
+      idToken: await currentUser.getIdToken(),
+    };
+  };
+
+  const resolveAuthProvider = (user: User): UserProfile["authProvider"] => {
+    const providerId = user.providerData[0]?.providerId;
+    if (providerId === "google.com") return "google";
+    if (providerId === "password") return "password";
+    return "unknown";
+  };
+
+  const saveFinalProfile = async (user: User, displayName?: string): Promise<UserProfile> => {
+    const userDocRef = doc(db, "users", user.uid);
+    const userDocSnap = await getDoc(userDocRef);
+    const existingProfile = userDocSnap.exists() ? (userDocSnap.data() as UserProfile) : null;
+    const role: 'guest' | 'admin' = user.email === ADMIN_EMAIL ? 'admin' : (existingProfile?.role || 'guest');
+    const profile: UserProfile = {
+      uid: user.uid,
+      email: user.email || existingProfile?.email || "",
+      displayName:
+        displayName ||
+        user.displayName ||
+        existingProfile?.displayName ||
+        user.email?.split('@')[0] ||
+        "Huésped Cardamomo",
+      role,
+      phone: existingProfile?.phone,
+      identification: existingProfile?.identification,
+      isTemporary: false,
+      authProvider: resolveAuthProvider(user),
+    };
+
+    await setDoc(userDocRef, {
+      ...profile,
+      updatedAt: serverTimestamp(),
+      ...(existingProfile?.isTemporary ? { convertedAt: serverTimestamp() } : {}),
+    }, { merge: true });
+
+    return profile;
+  };
+
+  const consolidateTemporarySession = async (temporarySession: TemporarySession, profile: UserProfile) => {
+    if (!temporarySession || temporarySession.uid === profile.uid) return;
+
+    const finalIdToken = await auth.currentUser?.getIdToken();
+    if (!finalIdToken) return;
+
+    const response = await fetch("/api/consolidate-temporary-user", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${finalIdToken}`,
+      },
+      body: JSON.stringify({
+        temporaryUserId: temporarySession.uid,
+        temporaryIdToken: temporarySession.idToken,
+        finalProfile: profile,
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      console.error("Temporary user consolidation failed:", data);
+    }
+  };
+
   // Authenticate with Google (Popup method is highly recommended)
   const handleGoogleLogin = async () => {
     setLoading(true);
     setErrorMsg("");
     const provider = new GoogleAuthProvider();
     try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
+      const temporarySession = await getTemporarySession();
+      let result;
 
-      // Check if user has a profile document in Firestore, if not create as guest
-      const userDocRef = doc(db, "users", user.uid);
-      const userDocSnap = await getDoc(userDocRef);
-      
-      let profile: UserProfile;
-
-      if (!userDocSnap.exists()) {
-        // Set standard guest profile (unless it's the registered hotel email)
-        const role: 'guest' | 'admin' = (user.email === 'edificiocardamomo@gmail.com') ? 'admin' : 'guest';
-        profile = {
-          uid: user.uid,
-          email: user.email || "",
-          displayName: user.displayName || user.email?.split('@')[0] || "Huésped Cardamomo",
-          role
-        };
-        await setDoc(userDocRef, profile);
+      if (temporarySession && auth.currentUser) {
+        try {
+          result = await linkWithPopup(auth.currentUser, provider);
+        } catch (linkErr: any) {
+          if (linkErr.code === "auth/credential-already-in-use" || linkErr.code === "auth/email-already-in-use") {
+            const credential = GoogleAuthProvider.credentialFromError(linkErr);
+            result = credential
+              ? await signInWithCredential(auth, credential)
+              : await signInWithPopup(auth, provider);
+          } else {
+            throw linkErr;
+          }
+        }
       } else {
-        profile = userDocSnap.data() as UserProfile;
+        result = await signInWithPopup(auth, provider);
       }
+
+      const user = result.user;
+      const profile = await saveFinalProfile(user);
+      await consolidateTemporarySession(temporarySession, profile);
 
       onSuccess(profile);
       onClose();
@@ -76,54 +161,27 @@ export default function LoginModal({ onClose, onSuccess }: LoginModalProps) {
     }
 
     try {
+      const temporarySession = await getTemporarySession();
+
       if (isRegister) {
-        // Create user
-        const result = await createUserWithEmailAndPassword(auth, email, password);
+        const credential = EmailAuthProvider.credential(email, password);
+        const result = temporarySession && auth.currentUser
+          ? await linkWithCredential(auth.currentUser, credential)
+          : await createUserWithEmailAndPassword(auth, email, password);
         const user = result.user;
         
         // Update user profile displayname in auth
         await updateProfile(user, { displayName: fullName });
 
-        // Setup Firestore document
-        const role: 'guest' | 'admin' = (email === 'edificiocardamomo@gmail.com') ? 'admin' : 'guest';
-        const profile: UserProfile = {
-          uid: user.uid,
-          email,
-          displayName: fullName,
-          role
-        };
-        
-        try {
-          await setDoc(doc(db, "users", user.uid), profile);
-        } catch (dbErr) {
-          handleFirestoreError(dbErr, OperationType.CREATE, `users/${user.uid}`);
-        }
-
+        const profile = await saveFinalProfile(user, fullName);
+        await consolidateTemporarySession(temporarySession, profile);
         onSuccess(profile);
       } else {
         // Login user
         const result = await signInWithEmailAndPassword(auth, email, password);
         const user = result.user;
-
-        // Fetch Firestore profile
-        const userDocRef = doc(db, "users", user.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        
-        let profile: UserProfile;
-
-        if (userDocSnap.exists()) {
-          profile = userDocSnap.data() as UserProfile;
-        } else {
-          // Fallback if document does not exist yet
-          const role: 'guest' | 'admin' = (user.email === 'edificiocardamomo@gmail.com') ? 'admin' : 'guest';
-          profile = {
-            uid: user.uid,
-            email: user.email || "",
-            displayName: user.displayName || "Huésped Cardamomo",
-            role
-          };
-          await setDoc(userDocRef, profile);
-        }
+        const profile = await saveFinalProfile(user);
+        await consolidateTemporarySession(temporarySession, profile);
 
         onSuccess(profile);
       }
@@ -154,6 +212,7 @@ export default function LoginModal({ onClose, onSuccess }: LoginModalProps) {
         <button 
           id="close-login-modal"
           onClick={onClose}
+          aria-label="Cerrar modal de inicio de sesión"
           className="absolute right-4 top-4 p-1.5 rounded-full bg-warm-card hover:bg-warm-border text-dark transition-colors"
         >
           <X className="w-4 h-4" />
@@ -166,7 +225,7 @@ export default function LoginModal({ onClose, onSuccess }: LoginModalProps) {
           </h2>
           <p className="text-xs text-dark-muted font-medium mt-1">
             {isRegister 
-              ? "Regístrate para reservar tu apartaestudio" 
+              ? "Convierte tu reserva temporal en una cuenta permanente" 
               : "Ingresa para gestionar tus reservas en Cardamomo"}
           </p>
         </div>
@@ -277,7 +336,7 @@ export default function LoginModal({ onClose, onSuccess }: LoginModalProps) {
 
         {/* Admin and setup tip */}
         <div className="mt-4 bg-accent/20 border border-accent/40 rounded-xl p-2 text-[10px] text-dark/80 font-medium">
-          💡 <strong>Nota del Desarrollador:</strong> Para registrarse como Administrador, regístrese con el correo oficial del hotel: <code className="font-mono text-primary font-bold">edificiocardamomo@gmail.com</code>. Para habilitar registro con Correo/Clave, actívelo en Firebase Authentication.
+          💡 <strong>Nota:</strong> Reservar no exige registro. Si luego creas cuenta con correo/clave o Google, tus reservas temporales se asocian al usuario definitivo. Para administrador use el correo oficial: <code className="font-mono text-primary font-bold">edificiocardamomo@gmail.com</code>.
         </div>
       </div>
     </div>

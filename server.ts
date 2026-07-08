@@ -8,8 +8,15 @@ import {
   getApp,
   applicationDefault,
 } from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
-import firebaseConfig from "./firebase-applet-config.json";
+import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
+import firebaseConfigFile from "./firebase-applet-config.json";
+
+const firebaseConfig = {
+  projectId: process.env.FIREBASE_PROJECT_ID || firebaseConfigFile.projectId,
+  firestoreDatabaseId: process.env.FIRESTORE_DATABASE_ID || firebaseConfigFile.firestoreDatabaseId || "(default)",
+};
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "edificiocardamomo@gmail.com";
 
 // Initialize Firebase Admin SDK (server-side).
 // Uses Application Default Credentials: GOOGLE_APPLICATION_CREDENTIALS in local
@@ -36,6 +43,95 @@ const db = getFirestore(getApp(), firebaseConfig.firestoreDatabaseId || "(defaul
 const app = express();
 app.use(express.json());
 const PORT = 3000;
+
+// -------------------------------------------------------------
+// 0. ENDPOINT: Consolidate anonymous temporary guests into accounts
+// -------------------------------------------------------------
+app.post("/api/consolidate-temporary-user", async (req, res) => {
+  const authorization = req.headers.authorization || "";
+  const finalIdToken = authorization.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : "";
+  const { temporaryUserId, temporaryIdToken, finalProfile } = req.body || {};
+
+  if (!finalIdToken || !temporaryUserId || !temporaryIdToken || !finalProfile) {
+    return res.status(400).json({ error: "Missing temporary/final user consolidation data." });
+  }
+
+  try {
+    const [finalToken, temporaryToken] = await Promise.all([
+      getAuth().verifyIdToken(finalIdToken),
+      getAuth().verifyIdToken(temporaryIdToken),
+    ]);
+
+    if (temporaryToken.uid !== temporaryUserId) {
+      return res.status(403).json({ error: "Temporary token does not match the temporary user." });
+    }
+
+    const temporaryProvider = temporaryToken.firebase?.sign_in_provider;
+    if (temporaryProvider !== "anonymous") {
+      return res.status(403).json({ error: "Only anonymous temporary users can be consolidated." });
+    }
+
+    const finalUserId = finalToken.uid;
+    const finalRole = finalToken.email === ADMIN_EMAIL ? "admin" : "guest";
+    if (finalUserId === temporaryUserId) {
+      await db.collection("users").doc(finalUserId).set({
+        ...finalProfile,
+        uid: finalUserId,
+        role: finalRole,
+        isTemporary: false,
+        updatedAt: FieldValue.serverTimestamp(),
+        convertedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      return res.json({ status: "already-linked", migratedBookings: 0 });
+    }
+
+    const temporaryRef = db.collection("users").doc(temporaryUserId);
+    const finalRef = db.collection("users").doc(finalUserId);
+    const temporarySnap = await temporaryRef.get();
+    const temporaryData = temporarySnap.exists ? temporarySnap.data() || {} : {};
+
+    await finalRef.set({
+      ...finalProfile,
+      uid: finalUserId,
+      email: finalToken.email || finalProfile.email || "",
+      displayName: finalProfile.displayName || temporaryData.displayName || finalToken.email || "Huésped Cardamomo",
+      role: finalRole,
+      phone: finalProfile.phone || temporaryData.phone || "",
+      identification: finalProfile.identification || temporaryData.identification || "",
+      isTemporary: false,
+      mergedTemporaryUserIds: FieldValue.arrayUnion(temporaryUserId),
+      updatedAt: FieldValue.serverTimestamp(),
+      convertedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    const bookingsSnap = await db
+      .collection("bookings")
+      .where("userId", "==", temporaryUserId)
+      .get();
+
+    const batch = db.batch();
+    bookingsSnap.forEach((bookingDoc) => {
+      batch.update(bookingDoc.ref, {
+        userId: finalUserId,
+        userEmail: finalToken.email || finalProfile.email || "",
+        userDisplayName: finalProfile.displayName || temporaryData.displayName || "Huésped Cardamomo",
+        userStatus: "registered",
+        convertedFromTemporaryUserId: temporaryUserId,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    });
+    batch.delete(temporaryRef);
+    await batch.commit();
+
+    return res.json({ status: "consolidated", migratedBookings: bookingsSnap.size });
+  } catch (error: any) {
+    console.error("Temporary user consolidation failed:", error);
+    return res.status(500).json({ error: error.message || "Unable to consolidate temporary user." });
+  }
+});
 
 // Helper to format ISO Date to YYYYMMDD for iCal
 function formatToICalDate(dateStr: string, isAllDay: boolean = true): string {
@@ -300,9 +396,14 @@ app.post("/api/notify-booking", async (req, res) => {
     const logs: string[] = [];
 
     // Message details
+    const guestName = booking.guestContact?.fullName || userDetails?.displayName || 'Cliente Cardamomo';
+    const guestPhone = booking.guestContact?.phone || userDetails?.phone || 'N/D';
+    const guestIdentification = booking.guestContact?.identification || userDetails?.identification || 'N/D';
     const summaryText = `Nueva Reserva en Edificio Cardamomo! 
 Apartastudio: ${roomDetails.name}
-Huésped: ${userDetails?.displayName || 'Cliente Cardamomo'} (${userDetails?.email || 'N/D'})
+Huésped: ${guestName} (${userDetails?.email || 'sin cuenta registrada'})
+Celular: ${guestPhone}
+Identificación: ${guestIdentification}
 Fechas: ${booking.checkIn} al ${booking.checkOut}
 Total: $${booking.totalPrice.toLocaleString()} COP
 ID Reserva: ${booking.id.substring(0, 8).toUpperCase()}`;
