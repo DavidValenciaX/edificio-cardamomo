@@ -326,8 +326,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
             <form onSubmit={handleAddManualBlock} className="text-xs grid grid-cols-1 gap-2.5">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[8px] font-bold text-dark uppercase block mb-1">Habitación</label>
+                  <label htmlFor="blocker-room-id" className="text-[8px] font-bold text-dark uppercase block mb-1">Habitación</label>
                   <select
+                    id="blocker-room-id"
                     value={blockerRoomId}
                     onChange={(e) => setBlockerRoomId(e.target.value)}
                     className="w-full bg-warm-card border border-warm-border rounded-lg p-2 text-[11px] font-semibold text-dark"
@@ -339,8 +340,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                 </div>
 
                 <div>
-                  <label className="text-[8px] font-bold text-dark uppercase block mb-1">Fecha (YYYY-MM-DD)</label>
+                  <label htmlFor="manual-block-date" className="text-[8px] font-bold text-dark uppercase block mb-1">Fecha (YYYY-MM-DD)</label>
                   <input
+                    id="manual-block-date"
                     type="date"
                     required
                     value={manualBlockDate}
@@ -373,8 +375,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                 
                 {/* Logo Settings */}
                 <div>
-                  <label className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1">Logotipo del Hotel (URL)</label>
+                  <label htmlFor="hotel-logo-url" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1">Logotipo del Hotel (URL)</label>
                   <input
+                    id="hotel-logo-url"
                     type="text"
                     required
                     value={settings.hotelLogoUrl}
@@ -416,8 +419,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
                     {settings.notificationConfig.emailEnabled && (
                       <div>
-                        <label className="text-[8px] font-bold text-dark-muted uppercase block mb-0.5">Destinatario Alerts Email</label>
+                        <label htmlFor="email-destination" className="text-[8px] font-bold text-dark-muted uppercase block mb-0.5">Destinatario Alerts Email</label>
                         <input 
+                          id="email-destination"
                           type="email" 
                           required
                           value={settings.notificationConfig.emailDestination}
@@ -458,8 +462,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
                     {settings.notificationConfig.whatsappEnabled && (
                       <div>
-                        <label className="text-[8px] font-bold text-dark-muted uppercase block mb-0.5">Celular Destinatario (WhatsApp)</label>
+                        <label htmlFor="whatsapp-destination" className="text-[8px] font-bold text-dark-muted uppercase block mb-0.5">Celular Destinatario (WhatsApp)</label>
                         <input 
+                          id="whatsapp-destination"
                           type="text" 
                           required
                           value={settings.notificationConfig.whatsappDestination}
@@ -500,8 +505,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
                     {settings.notificationConfig.smsEnabled && (
                       <div>
-                        <label className="text-[8px] font-bold text-dark-muted uppercase block mb-0.5">Celular de Alerta SMS</label>
+                        <label htmlFor="sms-destination" className="text-[8px] font-bold text-dark-muted uppercase block mb-0.5">Celular de Alerta SMS</label>
                         <input 
+                          id="sms-destination"
                           type="text" 
                           required
                           value={settings.notificationConfig.smsDestination}
@@ -615,8 +621,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
               <form onSubmit={handleSaveRoom} className="space-y-4 text-xs">
                 {/* ID Input (Immutable if editing) */}
                 <div>
-                  <label className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">ID Único de Habitación *</label>
+                  <label htmlFor="room-id-input" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">ID Único de Habitación *</label>
                   <input
+                    id="room-id-input"
                     type="text"
                     disabled={!!editingRoom.id}
                     required
@@ -629,8 +636,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
                 {/* Name */}
                 <div>
-                  <label className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Nombre Comercial de la Suite *</label>
+                  <label htmlFor="room-name" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Nombre Comercial de la Suite *</label>
                   <input
+                    id="room-name"
                     type="text"
                     required
                     placeholder="Ej: Suite Deluxe Exterior"
@@ -642,8 +650,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
                 {/* Description */}
                 <div>
-                  <label className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Descripción de Espacio de Autor *</label>
+                  <label htmlFor="room-desc" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Descripción de Espacio de Autor *</label>
                   <textarea
+                    id="room-desc"
                     required
                     rows={4}
                     placeholder="Describa acabados, servicios m2, tipo de cama, iluminación..."
@@ -656,8 +665,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                 {/* Price & Capacity Row */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Precio x Noche (COP) *</label>
+                    <label htmlFor="room-price" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Precio x Noche (COP) *</label>
                     <input
+                      id="room-price"
                       type="number"
                       required
                       min={1}
@@ -668,8 +678,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                   </div>
 
                   <div>
-                    <label className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Capacidad Máxima (Adultos) *</label>
+                    <label htmlFor="room-capacity" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Capacidad Máxima (Adultos) *</label>
                     <input
+                      id="room-capacity"
                       type="number"
                       required
                       min={1}
@@ -682,9 +693,10 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
                 {/* Images Manager */}
                 <div className="space-y-2 pb-1">
-                  <label className="text-[9px] font-bold text-dark uppercase tracking-wider block leading-none">Enlaces de Fotos (URLs)</label>
+                  <label htmlFor="new-image-input" className="text-[9px] font-bold text-dark uppercase tracking-wider block leading-none">Enlaces de Fotos (URLs)</label>
                   <div className="flex gap-2">
                     <input
+                      id="new-image-input"
                       type="url"
                       placeholder="https://images.unsplash.com/..."
                       value={newImageInput}
@@ -722,8 +734,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                   <span className="text-[9px] text-secondary font-mono uppercase font-bold tracking-widest block">Integración iCal Opcional</span>
                   
                   <div>
-                    <label className="text-[8px] font-bold text-dark-muted block mb-1 uppercase tracking-wider">Airbnb iCal Feed URL</label>
+                    <label htmlFor="airbnb-url" className="text-[8px] font-bold text-dark-muted block mb-1 uppercase tracking-wider">Airbnb iCal Feed URL</label>
                     <input
+                      id="airbnb-url"
                       type="url"
                       placeholder="https://www.airbnb.com/calendar/ical/..."
                       value={airbnbUrl}
@@ -733,8 +746,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                   </div>
 
                   <div>
-                    <label className="text-[8px] font-bold text-dark-muted block mb-1 uppercase tracking-wider">Booking.com iCal Feed URL</label>
+                    <label htmlFor="booking-url" className="text-[8px] font-bold text-dark-muted block mb-1 uppercase tracking-wider">Booking.com iCal Feed URL</label>
                     <input
+                      id="booking-url"
                       type="url"
                       placeholder="https://ical.booking.com/v1/..."
                       value={bookingUrl}
