@@ -1,6 +1,18 @@
-import fallbackConfig from "../../firebase-applet-config.json";
+import fallbackConfigJson from "../../firebase-applet-config.json";
 
-const env = (import.meta as any).env || {};
+type FirebaseAppletConfig = {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
+  measurementId: string;
+  firestoreDatabaseId?: string;
+};
+
+const fallbackConfig: FirebaseAppletConfig = fallbackConfigJson;
+const env = import.meta.env;
 
 export const firebaseConfig = {
   apiKey: env.VITE_FIREBASE_API_KEY || fallbackConfig.apiKey,
@@ -12,4 +24,3 @@ export const firebaseConfig = {
   measurementId: env.VITE_FIREBASE_MEASUREMENT_ID || fallbackConfig.measurementId,
   firestoreDatabaseId: env.VITE_FIRESTORE_DATABASE_ID || fallbackConfig.firestoreDatabaseId || "(default)",
 };
-

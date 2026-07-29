@@ -10,7 +10,14 @@ import {
 } from "firebase-admin";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
-import firebaseConfigFile from "./firebase-applet-config.json";
+import firebaseConfigJson from "./firebase-applet-config.json";
+
+type FirebaseAppletConfig = {
+  projectId: string;
+  firestoreDatabaseId?: string;
+};
+
+const firebaseConfigFile: FirebaseAppletConfig = firebaseConfigJson;
 
 const firebaseConfig = {
   projectId: process.env.FIREBASE_PROJECT_ID || firebaseConfigFile.projectId,
