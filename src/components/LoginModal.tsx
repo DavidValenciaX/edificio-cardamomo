@@ -12,6 +12,7 @@ import {
   User
 } from "firebase/auth";
 import { auth, db } from "../lib/firebase";
+import { getApiUrl } from "../lib/api";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { X, Mail, Lock, User as UserIcon, AlertCircle } from "lucide-react";
 import { UserProfile } from "../types";
@@ -89,7 +90,7 @@ export default function LoginModal({ onClose, onSuccess }: LoginModalProps) {
     const finalIdToken = await auth.currentUser?.getIdToken();
     if (!finalIdToken) return;
 
-    const response = await fetch("/api/consolidate-temporary-user", {
+    const response = await fetch(getApiUrl("/api/consolidate-temporary-user"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

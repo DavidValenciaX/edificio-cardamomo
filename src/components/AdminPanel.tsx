@@ -9,6 +9,7 @@ import {
   deleteDoc 
 } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "../lib/firebase";
+import { getApiUrl, getPublicApiOrigin } from "../lib/api";
 import { firebaseConfig } from "../lib/firebaseConfig";
 import { Room, Settings, NotificationConfig } from "../types";
 import { 
@@ -88,7 +89,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     setSyncLoading(true);
     setSyncFeedback("");
     try {
-      const response = await fetch("/api/sync-ical", { method: "POST" });
+      const response = await fetch(getApiUrl("/api/sync-ical"), { method: "POST" });
       const data = await response.json();
       if (response.ok) {
         setSyncFeedback(`Sincronización exitosa! Habitaciones actualizadas.`);
@@ -764,7 +765,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                     <span className="font-bold flex items-center gap-1">🔗 Canal iCal Exportable del Hotel:</span>
                     <p>Usa esta dirección URL para bloquear fechas en Booking / Airbnb automáticamente para esta habitación:</p>
                     <code className="block bg-white p-2 text-[8px] font-mono break-all text-secondary font-bold select-all border border-warm-border rounded leading-relaxed">
-                      {window.location.origin}/api/rooms/{editingRoom.id}/ical
+                      {getPublicApiOrigin()}/api/rooms/{editingRoom.id}/ical
                     </code>
                   </div>
                 )}

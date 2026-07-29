@@ -48,8 +48,40 @@ try {
 const db = getFirestore(getApp(), firebaseConfig.firestoreDatabaseId || "(default)");
 
 const app = express();
+const configuredCorsOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+function applyApiCors(req: express.Request, res: express.Response) {
+  const requestOrigin = req.headers.origin;
+  if (!requestOrigin) return;
+
+  if (configuredCorsOrigins.length === 0) {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  } else if (configuredCorsOrigins.includes(requestOrigin)) {
+    res.setHeader("Access-Control-Allow-Origin", requestOrigin);
+    res.setHeader("Vary", "Origin");
+  } else {
+    return;
+  }
+
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
+
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    applyApiCors(req, res);
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(204);
+    }
+  }
+  next();
+});
 app.use(express.json());
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
+const ENABLE_ICAL_SYNC_TIMER = process.env.ENABLE_ICAL_SYNC_TIMER === "true";
 
 // -------------------------------------------------------------
 // 0. ENDPOINT: Consolidate anonymous temporary guests into accounts
@@ -451,19 +483,24 @@ ID Reserva: ${booking.id.substring(0, 8).toUpperCase()}`;
   }
 });
 
-// Background Timer simulating scheduled Firebase Cloud Function (every 5 minutes in background for preview)
-setInterval(async () => {
-  try {
-    console.log("Background job: Running scheduled iCal sync for Edificio Cardamomo rooms...");
-    const syncRes = await fetch(`http://localhost:${PORT}/api/sync-ical`, { method: "POST" });
-    if (syncRes.ok) {
-      const data = await syncRes.json();
-      console.log("Background iCal sync completed successfully:", data.synced_rooms);
+// Cloud Run is request-driven, so recurring background work should be triggered by
+// Cloud Scheduler or another external scheduler instead of an in-process timer.
+if (ENABLE_ICAL_SYNC_TIMER) {
+  setInterval(async () => {
+    try {
+      console.log("Background job: Running scheduled iCal sync for Edificio Cardamomo rooms...");
+      const syncRes = await fetch(`http://localhost:${PORT}/api/sync-ical`, { method: "POST" });
+      if (syncRes.ok) {
+        const data = await syncRes.json();
+        console.log("Background iCal sync completed successfully:", data.synced_rooms);
+      }
+    } catch (e: any) {
+      console.error("Background scheduled sync skipped/failed:", e.message);
     }
-  } catch (e: any) {
-    console.error("Background scheduled sync skipped/failed:", e.message);
-  }
-}, 5 * 60 * 1000);
+  }, 5 * 60 * 1000);
+} else {
+  console.log("Background iCal sync timer disabled. Use Cloud Scheduler or trigger /api/sync-ical manually.");
+}
 
 // Initialize Express + Vite Server Link
 async function startServer() {

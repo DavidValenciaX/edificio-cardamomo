@@ -13,6 +13,7 @@ import {
   Timestamp
 } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "../lib/firebase";
+import { getApiUrl } from "../lib/api";
 import { Room, Booking, UserProfile, GuestContact } from "../types";
 import { Calendar as CalendarIcon, Check, Users, DollarSign, ArrowRight, ShieldCheck, Info, X } from "lucide-react";
 
@@ -350,7 +351,7 @@ export default function GuestDashboard({
           ...newBooking,
           createdAt: new Date().toISOString()
         };
-        const response = await fetch("/api/notify-booking", {
+        const response = await fetch(getApiUrl("/api/notify-booking"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

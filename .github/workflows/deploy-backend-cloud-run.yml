@@ -1,0 +1,65 @@
+name: Deploy Backend to Cloud Run
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-backend-cloud-run.yml"
+      - ".gcloudignore"
+      - "server.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "firebase-applet-config.json"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ secrets.GCP_REGION }}
+      CLOUD_RUN_SERVICE: ${{ secrets.CLOUD_RUN_SERVICE }}
+      CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT: ${{ secrets.CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT }}
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIRESTORE_DATABASE_ID: ${{ secrets.FIRESTORE_DATABASE_ID }}
+      ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+      ENABLE_ICAL_SYNC_TIMER: ${{ secrets.ENABLE_ICAL_SYNC_TIMER }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy source to Cloud Run
+        shell: bash
+        run: |
+          DEPLOY_ARGS=(
+            run deploy "${CLOUD_RUN_SERVICE}"
+            --source .
+            --region "${GCP_REGION}"
+            --project "${GCP_PROJECT_ID}"
+            --allow-unauthenticated
+            --quiet
+            --update-env-vars "FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},FIRESTORE_DATABASE_ID=${FIRESTORE_DATABASE_ID},ADMIN_EMAIL=${ADMIN_EMAIL},ENABLE_ICAL_SYNC_TIMER=${ENABLE_ICAL_SYNC_TIMER}"
+          )
+
+          if [ -n "${CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT}" ]; then
+            DEPLOY_ARGS+=(--service-account "${CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT}")
+          fi
+
+          gcloud "${DEPLOY_ARGS[@]}"

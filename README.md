@@ -20,3 +20,56 @@ Aplicación de reservas para apartaestudios con Firebase Auth, Firestore, sincro
 Despliega `firestore.rules` en tu proyecto Firebase. Las reglas permiten reservas de usuarios anónimos temporales y exigen datos básicos del huésped: nombre, celular e identificación.
 
 Cuando un invitado temporal se registra con correo/contraseña o Google, la app consolida sus reservas en el usuario definitivo.
+
+## Despliegue automatizado
+
+Se agregaron tres workflows de GitHub Actions:
+
+- `deploy-hosting.yml`: construye el frontend y despliega Firebase Hosting.
+- `deploy-backend-cloud-run.yml`: despliega `server.ts` a Cloud Run usando `gcloud run deploy --source`.
+- `deploy-firestore-rules.yml`: despliega `firestore.rules`.
+
+### Secretos de GitHub requeridos
+
+#### Autenticación con Google Cloud
+
+- `GCP_WORKLOAD_IDENTITY_PROVIDER`
+- `GCP_SERVICE_ACCOUNT`
+
+#### Firebase Hosting / Firestore
+
+- `FIREBASE_PROJECT_ID`
+
+#### Cloud Run
+
+- `GCP_PROJECT_ID`
+- `GCP_REGION`
+- `CLOUD_RUN_SERVICE`
+- `CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT` (recomendado)
+- `FIRESTORE_DATABASE_ID`
+- `ADMIN_EMAIL`
+- `ENABLE_ICAL_SYNC_TIMER` (usar `"false"` en Cloud Run)
+- `CORS_ALLOWED_ORIGINS` (opcional, lista separada por comas con los orígenes del frontend)
+
+#### Variables de build para Vite
+
+- `VITE_FIREBASE_API_KEY`
+- `VITE_FIREBASE_AUTH_DOMAIN`
+- `VITE_FIREBASE_PROJECT_ID`
+- `VITE_FIREBASE_STORAGE_BUCKET`
+- `VITE_FIREBASE_MESSAGING_SENDER_ID`
+- `VITE_FIREBASE_APP_ID`
+- `VITE_FIREBASE_MEASUREMENT_ID`
+- `VITE_FIRESTORE_DATABASE_ID`
+- `VITE_ADMIN_EMAIL`
+- `VITE_API_BASE_URL`
+
+`VITE_API_BASE_URL` debe apuntar a la URL publica de Cloud Run, por ejemplo:
+`https://tu-servicio-abcdef-uc.a.run.app`
+
+### Notas de arquitectura
+
+- El frontend ya no depende de que `/api` viva en el mismo dominio. Si `VITE_API_BASE_URL` esta definida, las llamadas al backend salen hacia Cloud Run.
+- El backend responde preflight CORS para rutas `/api/*`. Si defines `CORS_ALLOWED_ORIGINS`, solo esos orígenes quedan permitidos; si se deja vacía, la API responde con `Access-Control-Allow-Origin: *`.
+- En Cloud Run el servidor ahora usa `process.env.PORT`.
+- La sincronización iCal por `setInterval` queda desactivada por defecto en producción. En Cloud Run conviene invocar `POST /api/sync-ical` desde Cloud Scheduler.
