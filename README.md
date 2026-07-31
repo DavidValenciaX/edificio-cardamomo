@@ -6,7 +6,7 @@ Aplicación de reservas para apartaestudios con Firebase Auth, Firestore, sincro
 
 1. Instala dependencias:
    `npm install`
-2. Crea `.env.local` a partir de `.env.example` y pega la configuración de tu nuevo proyecto Firebase.
+2. Crea `.env.local` a partir de `.env.example` y pega la configuración de tu proyecto Firebase.
 3. En Firebase Authentication habilita:
    - Anonymous
    - Email/Password
@@ -14,6 +14,8 @@ Aplicación de reservas para apartaestudios con Firebase Auth, Firestore, sincro
 4. En desarrollo local, descarga una credencial de servicio y configura `GOOGLE_APPLICATION_CREDENTIALS`.
 5. Ejecuta:
    `npm run dev`
+
+La app ya no usa `firebase-applet-config.json` como respaldo. Toda la configuración de Firebase se toma desde variables de entorno.
 
 ## Firestore
 
@@ -55,14 +57,17 @@ Se agregaron tres workflows de GitHub Actions:
 
 - `VITE_FIREBASE_API_KEY`
 - `VITE_FIREBASE_AUTH_DOMAIN`
-- `VITE_FIREBASE_PROJECT_ID`
 - `VITE_FIREBASE_STORAGE_BUCKET`
 - `VITE_FIREBASE_MESSAGING_SENDER_ID`
 - `VITE_FIREBASE_APP_ID`
 - `VITE_FIREBASE_MEASUREMENT_ID`
-- `VITE_FIRESTORE_DATABASE_ID`
-- `VITE_ADMIN_EMAIL`
 - `VITE_API_BASE_URL`
+
+Los workflows reutilizan algunos secretos compartidos para no duplicarlos en GitHub:
+
+- `VITE_FIREBASE_PROJECT_ID` se toma desde `FIREBASE_PROJECT_ID`
+- `VITE_FIRESTORE_DATABASE_ID` se toma desde `FIRESTORE_DATABASE_ID`
+- `VITE_ADMIN_EMAIL` se toma desde `ADMIN_EMAIL`
 
 `VITE_API_BASE_URL` debe apuntar a la URL publica de Cloud Run, por ejemplo:
 `https://tu-servicio-abcdef-uc.a.run.app`

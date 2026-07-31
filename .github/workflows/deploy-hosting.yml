@@ -13,7 +13,6 @@ on:
       - "package-lock.json"
       - "vite.config.ts"
       - "firebase.json"
-      - "firebase-applet-config.json"
 
 permissions:
   contents: read

@@ -1,26 +1,21 @@
-import fallbackConfigJson from "../../firebase-applet-config.json";
-
-type FirebaseAppletConfig = {
-  apiKey: string;
-  authDomain: string;
-  projectId: string;
-  storageBucket: string;
-  messagingSenderId: string;
-  appId: string;
-  measurementId: string;
-  firestoreDatabaseId?: string;
-};
-
-const fallbackConfig: FirebaseAppletConfig = fallbackConfigJson;
 const env = import.meta.env;
 
+function readRequiredClientEnv(name: string): string {
+  const value = env[name as keyof ImportMetaEnv];
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+
+  throw new Error(`Missing required Firebase client env var: ${name}`);
+}
+
 export const firebaseConfig = {
-  apiKey: env.VITE_FIREBASE_API_KEY || fallbackConfig.apiKey,
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || fallbackConfig.authDomain,
-  projectId: env.VITE_FIREBASE_PROJECT_ID || fallbackConfig.projectId,
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || fallbackConfig.storageBucket,
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || fallbackConfig.messagingSenderId,
-  appId: env.VITE_FIREBASE_APP_ID || fallbackConfig.appId,
-  measurementId: env.VITE_FIREBASE_MEASUREMENT_ID || fallbackConfig.measurementId,
-  firestoreDatabaseId: env.VITE_FIRESTORE_DATABASE_ID || fallbackConfig.firestoreDatabaseId || "(default)",
+  apiKey: readRequiredClientEnv("VITE_FIREBASE_API_KEY"),
+  authDomain: readRequiredClientEnv("VITE_FIREBASE_AUTH_DOMAIN"),
+  projectId: readRequiredClientEnv("VITE_FIREBASE_PROJECT_ID"),
+  storageBucket: readRequiredClientEnv("VITE_FIREBASE_STORAGE_BUCKET"),
+  messagingSenderId: readRequiredClientEnv("VITE_FIREBASE_MESSAGING_SENDER_ID"),
+  appId: readRequiredClientEnv("VITE_FIREBASE_APP_ID"),
+  measurementId: readRequiredClientEnv("VITE_FIREBASE_MEASUREMENT_ID"),
+  firestoreDatabaseId: env.VITE_FIRESTORE_DATABASE_ID?.trim() || "(default)",
 };

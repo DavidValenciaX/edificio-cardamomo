@@ -10,18 +10,18 @@ import {
 } from "firebase-admin";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
-import firebaseConfigJson from "./firebase-applet-config.json";
 
-type FirebaseAppletConfig = {
-  projectId: string;
-  firestoreDatabaseId?: string;
-};
+function readRequiredServerEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (value) return value;
 
-const firebaseConfigFile: FirebaseAppletConfig = firebaseConfigJson;
+  console.error(`[config] Missing required server env var: ${name}`);
+  process.exit(1);
+}
 
 const firebaseConfig = {
-  projectId: process.env.FIREBASE_PROJECT_ID || firebaseConfigFile.projectId,
-  firestoreDatabaseId: process.env.FIRESTORE_DATABASE_ID || firebaseConfigFile.firestoreDatabaseId || "(default)",
+  projectId: readRequiredServerEnv("FIREBASE_PROJECT_ID"),
+  firestoreDatabaseId: process.env.FIRESTORE_DATABASE_ID || "(default)",
 };
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "edificiocardamomo@gmail.com";
 
