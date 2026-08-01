@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, FormEvent, ChangeEvent } from "react";
 import { 
   collection, 
   getDocs, 
@@ -8,7 +8,8 @@ import {
   updateDoc, 
   deleteDoc 
 } from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "../lib/firebase";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { db, handleFirestoreError, OperationType, storage } from "../lib/firebase";
 import { getApiUrl, getPublicApiOrigin } from "../lib/api";
 import { firebaseConfig } from "../lib/firebaseConfig";
 import { DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
@@ -41,6 +42,8 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
   // Global Hotel Settings
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loadingSettings, setLoadingSettings] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoUploadError, setLogoUploadError] = useState("");
 
   // States for CRUD Apartment
   const [editingRoom, setEditingRoom] = useState<Partial<Room> | null>(null); // Null means list view, non-null means form view
@@ -77,6 +80,83 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       setSettings(buildEmptySettings());
     } finally {
       setLoadingSettings(false);
+    }
+  };
+
+  const handleLogoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!settings) {
+      event.target.value = "";
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setLogoUploadError("Selecciona una imagen válida para el logo.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setLogoUploadError("El logo debe pesar menos de 5 MB.");
+      event.target.value = "";
+      return;
+    }
+
+    setUploadingLogo(true);
+    setLogoUploadError("");
+
+    try {
+      const fileExtension = file.name.includes(".")
+        ? file.name.split(".").pop()?.toLowerCase()
+        : "png";
+      const storageRef = ref(
+        storage,
+        `branding/hotel-logo-${Date.now()}.${fileExtension || "png"}`
+      );
+
+      await uploadBytes(storageRef, file, {
+        contentType: file.type,
+        cacheControl: "public,max-age=3600",
+      });
+
+      const downloadUrl = await getDownloadURL(storageRef);
+      const nextSettings = {
+        ...settings,
+        hotelLogoUrl: downloadUrl,
+      };
+
+      await setDoc(doc(db, "settings", "global"), {
+        hotelLogoUrl: downloadUrl,
+      }, { merge: true });
+
+      setSettings(nextSettings);
+    } catch (error) {
+      console.error("Logo upload failed:", error);
+      setLogoUploadError("No se pudo subir el logo. Revisa Storage y sus reglas.");
+    } finally {
+      setUploadingLogo(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!settings) return;
+
+    try {
+      await setDoc(doc(db, "settings", "global"), {
+        hotelLogoUrl: "",
+      }, { merge: true });
+
+      setSettings({
+        ...settings,
+        hotelLogoUrl: "",
+      });
+      setLogoUploadError("");
+    } catch (error) {
+      console.error("Logo removal failed:", error);
+      setLogoUploadError("No se pudo quitar el logo actual.");
     }
   };
 
@@ -382,23 +462,38 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                 
                 {/* Logo Settings */}
                 <div>
-                  <label htmlFor="hotel-logo-url" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1">Logotipo del Hotel (URL)</label>
-                  <input
-                    id="hotel-logo-url"
-                    type="text"
-                    value={settings.hotelLogoUrl}
-                    onChange={(e) => setSettings({ ...settings, hotelLogoUrl: e.target.value })}
-                    className="w-full bg-warm-card border border-warm-border rounded-lg py-2 px-3 text-dark text-[11px]"
-                    placeholder="https://..."
-                  />
+                  <label className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1">Logotipo del Hotel</label>
                   <div className="mt-2 flex items-center gap-3">
                     <img
                       src={settings.hotelLogoUrl || DEFAULT_LOGO_PLACEHOLDER}
                       alt="Vista previa del logo"
                       className="w-10 h-10 rounded-full object-cover border border-warm-border"
                     />
-                    <span className="text-[8px] text-dark-muted block">Si lo dejas vacío, la app mostrará un placeholder neutro hasta que cargues el logo real.</span>
+                    <span className="text-[8px] text-dark-muted block">El logo se sube a Firebase Storage. Si no hay logo, la app muestra un placeholder neutro.</span>
                   </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <label className="inline-flex items-center justify-center gap-2 bg-secondary hover:bg-secondary-hover text-warm-bg py-2 px-3 rounded-lg text-[10px] font-bold cursor-pointer">
+                      <span>{uploadingLogo ? "Subiendo..." : "Subir Logo"}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={uploadingLogo}
+                        onChange={handleLogoUpload}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleRemoveLogo}
+                      disabled={uploadingLogo || !settings.hotelLogoUrl}
+                      className="py-2 px-3 rounded-lg text-[10px] font-bold border border-warm-border bg-white text-dark disabled:opacity-50"
+                    >
+                      Quitar Logo
+                    </button>
+                  </div>
+                  {logoUploadError && (
+                    <p className="mt-2 text-[10px] font-semibold text-red-600">{logoUploadError}</p>
+                  )}
                 </div>
 
                 <div className="h-px bg-warm-border"></div>

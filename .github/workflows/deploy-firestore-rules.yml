@@ -1,4 +1,4 @@
-name: Deploy Firestore Rules
+name: Deploy Firebase Rules
 
 on:
   workflow_dispatch:
@@ -8,6 +8,7 @@ on:
     paths:
       - ".github/workflows/deploy-firestore-rules.yml"
       - "firestore.rules"
+      - "storage.rules"
       - "firebase.json"
 
 permissions:
@@ -38,5 +39,5 @@ jobs:
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
 
-      - name: Deploy Firestore rules
-        run: firebase deploy --only firestore:rules --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive
+      - name: Deploy Firestore and Storage rules
+        run: firebase deploy --only firestore:rules,storage --project "${{ secrets.FIREBASE_PROJECT_ID }}" --non-interactive

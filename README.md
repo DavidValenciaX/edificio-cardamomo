@@ -17,9 +17,9 @@ Aplicación de reservas para apartaestudios con Firebase Auth, Firestore, sincro
 
 La app ya no usa `firebase-applet-config.json` como respaldo. Toda la configuración de Firebase se toma desde variables de entorno.
 
-## Firestore
+## Firestore y Storage
 
-Despliega `firestore.rules` en tu proyecto Firebase. Las reglas permiten reservas de usuarios anónimos temporales y exigen datos básicos del huésped: nombre, celular e identificación.
+Despliega `firestore.rules` y `storage.rules` en tu proyecto Firebase. Las reglas permiten reservas de usuarios anónimos temporales y exigen datos básicos del huésped: nombre, celular e identificación. El logo del hotel se sube desde el panel admin a Firebase Storage y su URL queda guardada en `settings/global`.
 
 Cuando un invitado temporal se registra con correo/contraseña o Google, la app consolida sus reservas en el usuario definitivo.
 
@@ -29,7 +29,7 @@ Se agregaron tres workflows de GitHub Actions:
 
 - `deploy-hosting.yml`: construye el frontend y despliega Firebase Hosting.
 - `deploy-backend-cloud-run.yml`: despliega `server.ts` a Cloud Run usando `gcloud run deploy --source`.
-- `deploy-firestore-rules.yml`: despliega `firestore.rules`.
+- `deploy-firestore-rules.yml`: despliega `firestore.rules` y `storage.rules`.
 
 ### Secretos de GitHub requeridos
 
