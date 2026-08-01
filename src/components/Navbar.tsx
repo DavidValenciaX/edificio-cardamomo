@@ -42,8 +42,8 @@ export default function Navbar({
 
         {/* Editorial Responsive Navigation Menu (Hidden on mobile, visible on tablet/desk) */}
         <div className="hidden md:flex items-center gap-8 text-[10px] font-sans font-bold uppercase tracking-widest text-dark-muted">
-          <a href="#suites" className="hover:text-primary transition-colors py-1 pl-1">
-            Suites de Firma
+          <a href="#apartamentos" className="hover:text-primary transition-colors py-1 pl-1">
+            Apartamentos
           </a>
           <a href="#amenities" className="hover:text-primary transition-colors py-1">
             Comodidades

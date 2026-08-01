@@ -277,7 +277,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       const response = await fetch(getApiUrl("/api/sync-ical"), { method: "POST" });
       const data = await response.json();
       if (response.ok) {
-        setSyncFeedback(`Sincronización exitosa! Habitaciones actualizadas.`);
+        setSyncFeedback(`Sincronización exitosa. Apartamentos actualizados.`);
         onRefreshRooms();
       } else {
         setSyncFeedback(`Error: ${data.error || "Fallo en la comunicación con el servidor."}`);
@@ -326,7 +326,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       setBlockedDates([...room.blockedDates]);
     } else {
       setEditingRoom({});
-      setRoomIdInput("apartaestudio-" + Math.floor(Math.random() * 900 + 100)); // Generate default ID
+      setRoomIdInput("apartamento-" + Math.floor(Math.random() * 900 + 100)); // Generate default ID
       setRoomName("");
       setRoomDesc("");
       setRoomPrice(170000);
@@ -393,7 +393,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       for (const imageUrl of pendingRoomImageDeletes) {
         await deleteStorageFileByUrl(imageUrl);
       }
-      alert("Apartaestudio guardado con éxito.");
+      alert("Apartamento guardado con éxito.");
       setPendingRoomImageDeletes([]);
       setOriginalRoomImages([]);
       setEditingRoom(null);
@@ -405,7 +405,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
   };
 
   const handleDeleteRoom = async (roomId: string) => {
-    if (!window.confirm("¿Está seguro de eliminar esta habitación definitivamente?")) {
+    if (!window.confirm("¿Está seguro de eliminar este apartamento definitivamente?")) {
       return;
     }
     try {
@@ -416,7 +416,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
           await deleteStorageFileByUrl(imageUrl);
         }
       }
-      alert("Apartaestudio eliminado.");
+      alert("Apartamento eliminado.");
       onRefreshRooms();
     } catch (err: any) {
       console.error("Delete failed:", err);
@@ -429,7 +429,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     if (files.length === 0) return;
 
     if (!roomIdInput) {
-      setRoomImagesUploadError("Define primero el ID de la habitación antes de subir imágenes.");
+      setRoomImagesUploadError("Define primero el ID del apartamento antes de subir imágenes.");
       event.target.value = "";
       return;
     }
@@ -465,7 +465,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
   const handleAddManualBlock = async (e: FormEvent) => {
     e.preventDefault();
     if (!manualBlockDate || !blockerRoomId) {
-      alert("Seleccione habitación y fecha.");
+      alert("Seleccione apartamento y fecha.");
       return;
     }
 
@@ -520,7 +520,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       <div className="grid grid-cols-3 gap-2.5">
         <div className="bg-accent/15 p-3 rounded border-l-[3px] border-accent shadow-sm">
           <span className="text-[8px] text-secondary font-mono tracking-wider block font-bold leading-none mb-1.5 uppercase">
-            HABITACIONES
+            APARTAMENTOS
           </span>
           <span className="text-xl font-display font-bold text-dark leading-none">
             {rooms.length}
@@ -582,7 +582,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
             <form onSubmit={handleAddManualBlock} className="text-xs grid grid-cols-1 gap-2.5">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label htmlFor="blocker-room-id" className="text-[8px] font-bold text-dark uppercase block mb-1">Habitación</label>
+                  <label htmlFor="blocker-room-id" className="text-[8px] font-bold text-dark uppercase block mb-1">Apartamento</label>
                   <select
                     id="blocker-room-id"
                     value={blockerRoomId}
@@ -590,7 +590,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                     disabled={rooms.length === 0}
                     className="w-full bg-warm-card border border-warm-border rounded-lg p-2 text-[11px] font-semibold text-dark"
                   >
-                    {rooms.length === 0 && <option value="">Sin habitaciones</option>}
+                    {rooms.length === 0 && <option value="">Sin apartamentos</option>}
                     {rooms.map(r => (
                       <option key={r.id} value={r.id}>{r.name}</option>
                     ))}
@@ -866,20 +866,20 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
           {editingRoom === null ? (
             <section className="space-y-3.5">
               <div className="flex justify-between items-center border-b border-warm-border/60 pb-2">
-                <h3 className="font-display font-bold text-base text-dark">Gestor de Habitaciones ({rooms.length})</h3>
+                <h3 className="font-display font-bold text-base text-dark">Gestor de Apartamentos ({rooms.length})</h3>
                 <button
                   onClick={() => openEditForm(null)}
                   className="flex items-center gap-1.5 bg-primary hover:bg-primary-hover text-warm-bg text-[10px] font-bold py-2 px-3 rounded-lg shadow animate-pulse hover:animate-none"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Nueva Habitación</span>
+                  <span>Nuevo Apartamento</span>
                 </button>
               </div>
 
               <div className="space-y-3.5">
                 {rooms.length === 0 ? (
                   <div className="bg-white border border-dashed border-warm-border rounded-xl p-6 text-center text-sm text-dark-muted">
-                    Aún no hay habitaciones configuradas. Crea la primera desde el botón <strong>Nueva Habitación</strong>.
+                    Aún no hay apartamentos configurados. Crea el primero desde el botón <strong>Nuevo Apartamento</strong>.
                   </div>
                 ) : rooms.map((room) => (
                   <div key={room.id} className="bg-white border border-warm-border rounded-xl p-3.5 flex gap-4 items-center relative shadow-sm">
@@ -912,14 +912,14 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                       <button
                         onClick={() => openEditForm(room)}
                         className="p-2 text-secondary hover:bg-warm-card rounded border border-transparent hover:border-warm-border transition-colors cursor-pointer"
-                        title="Editar Apartaestudio"
+                        title="Editar Apartamento"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDeleteRoom(room.id)}
                         className="p-2 text-red-600 hover:bg-red-50 rounded border border-transparent hover:border-red-100 transition-colors cursor-pointer"
-                        title="Eliminar Apartaestudio"
+                        title="Eliminar Apartamento"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -929,11 +929,11 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
               </div>
             </section>
           ) : (
-            /* Form View for Adding / Editing Apartaestudio */
+            /* Form View for Adding / Editing Apartment */
             <section className="bg-white border border-warm-border rounded-xl p-5 shadow-sm space-y-4">
               <div className="flex justify-between items-center border-b border-warm-border pb-3">
                 <h4 className="font-display font-semibold text-sm uppercase tracking-wider text-dark leading-none">
-                  {editingRoom.id ? `Editar Apartaestudio: ${editingRoom.name}` : "Crear Nuevo Apartaestudio"}
+                  {editingRoom.id ? `Editar Apartamento: ${editingRoom.name}` : "Crear Nuevo Apartamento"}
                 </h4>
                 <button
                   type="button"
@@ -949,13 +949,13 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
               <form onSubmit={handleSaveRoom} className="space-y-4 text-xs">
                 {/* ID Input (Immutable if editing) */}
                 <div>
-                  <label htmlFor="room-id-input" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">ID Único de Habitación *</label>
+                  <label htmlFor="room-id-input" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">ID Único de Apartamento *</label>
                   <input
                     id="room-id-input"
                     type="text"
                     disabled={!!editingRoom.id}
                     required
-                    placeholder="Ej: apartaestudio-101"
+                    placeholder="Ej: apartamento-101"
                     value={roomIdInput}
                     onChange={(e) => setRoomIdInput(e.target.value.toLowerCase().replace(/\s/g, '-'))}
                     className="w-full bg-warm-card border border-warm-border rounded-lg py-2 px-3 text-dark focus:outline-none focus:border-secondary font-mono text-xs disabled:opacity-50"
@@ -964,12 +964,12 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
                 {/* Name */}
                 <div>
-                  <label htmlFor="room-name" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Nombre Comercial de la Suite *</label>
+                  <label htmlFor="room-name" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Nombre Comercial del Apartamento *</label>
                   <input
                     id="room-name"
                     type="text"
                     required
-                    placeholder="Ej: Suite Deluxe Exterior"
+                    placeholder="Ej: Apartamento Deluxe Exterior"
                     value={roomName}
                     onChange={(e) => setRoomName(e.target.value)}
                     className="w-full bg-warm-card border border-warm-border rounded-lg py-2 px-3 text-dark font-medium focus:outline-none focus:border-secondary text-xs"
@@ -978,7 +978,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
                 {/* Description */}
                 <div>
-                  <label htmlFor="room-desc" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Descripción de Espacio de Autor *</label>
+                  <label htmlFor="room-desc" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Descripción del Apartamento *</label>
                   <textarea
                     id="room-desc"
                     required
@@ -1021,9 +1021,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
                 {/* Images Manager */}
                 <div className="space-y-2 pb-1">
-                  <label className="text-[9px] font-bold text-dark uppercase tracking-wider block leading-none">Fotos de la Habitación</label>
+                  <label className="text-[9px] font-bold text-dark uppercase tracking-wider block leading-none">Fotos del Apartamento</label>
                   <p className="text-[8px] text-dark-muted">
-                    Sube imágenes reales a Firebase Storage. Puedes cargar varias a la vez y el límite actual es de 10 fotos por habitación.
+                    Sube imágenes reales a Firebase Storage. Puedes cargar varias a la vez y el límite actual es de 10 fotos por apartamento.
                   </p>
                   <label className="inline-flex items-center justify-center gap-2 bg-secondary hover:bg-secondary-hover text-warm-bg py-2 px-3 rounded-lg text-[10px] font-bold cursor-pointer w-fit">
                     <span>{uploadingRoomImages ? "Subiendo..." : "Subir Fotos"}</span>
@@ -1044,7 +1044,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                   <div className="flex gap-2.5 overflow-x-auto pt-1 py-1">
                     {roomImages.length === 0 && (
                       <div className="w-full rounded-lg border border-dashed border-warm-border bg-warm-card px-3 py-4 text-[10px] text-dark-muted text-center">
-                        Aún no has subido fotos para esta habitación.
+                        Aún no has subido fotos para este apartamento.
                       </div>
                     )}
                     {roomImages.map((img, idx) => (
@@ -1095,7 +1095,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                 {editingRoom.id && (
                   <div className="p-3 bg-secondary/15 rounded-lg text-[9px] text-dark font-medium leading-normal space-y-1.5 border border-secondary/30">
                     <span className="font-bold flex items-center gap-1">🔗 Canal iCal Exportable del Hotel:</span>
-                    <p>Usa esta dirección URL para bloquear fechas en Booking / Airbnb automáticamente para esta habitación:</p>
+                    <p>Usa esta dirección URL para bloquear fechas en Booking / Airbnb automáticamente para este apartamento:</p>
                     <code className="block bg-white p-2 text-[8px] font-mono break-all text-secondary font-bold select-all border border-warm-border rounded leading-relaxed">
                       {getPublicApiOrigin()}/api/rooms/{editingRoom.id}/ical
                     </code>
@@ -1108,7 +1108,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                   className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-warm-bg py-3 rounded-lg font-bold shadow-sm transition-all active:scale-95 text-xs font-sans uppercase tracking-wider"
                 >
                   <Save className="w-4.5 h-4.5" />
-                  <span>Guardar Apartaestudio</span>
+                  <span>Guardar Apartamento</span>
                 </button>
               </form>
             </section>

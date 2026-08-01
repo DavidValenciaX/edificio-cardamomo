@@ -31,20 +31,20 @@ export default function LandingPage({ rooms, heroImageUrl, onSelectRoom, onLogin
             Edificio Cardamomo
           </h1>
           <p className="text-warm-bg/90 text-xs md:text-sm font-medium mt-2 max-w-xl font-serif">
-            Apartaestudios amoblados premium en el corazón de la ciudad. El lugar perfecto para tu estadía de negocios o descanso.
+            Apartamentos amoblados premium en el corazón de la ciudad. El lugar perfecto para tu estadía de negocios o descanso.
           </p>
         </div>
       </section>
 
-      {/* 2. Rooms / Apartaestudios Showcase */}
-      <section id="suites" className="py-8 px-0 scroll-mt-14">
+      {/* 2. Apartments Showcase */}
+      <section id="apartamentos" className="py-8 px-0 scroll-mt-14">
         <div className="flex items-end justify-between mb-6 border-b border-warm-border/60 pb-3">
           <div>
-            <h2 className="font-display font-bold text-2xl md:text-3xl text-dark leading-none">Nuestros Apartaestudios</h2>
-            <p className="text-[10px] md:text-xs text-dark-muted font-serif italic mt-2">Espacios de firma con acabados contemporáneos e interiorismo zen</p>
+            <h2 className="font-display font-bold text-2xl md:text-3xl text-dark leading-none">Nuestros Apartamentos</h2>
+            <p className="text-[10px] md:text-xs text-dark-muted font-serif italic mt-2">Apartamentos con acabados contemporáneos e interiorismo zen</p>
           </div>
           <span className="text-[9px] md:text-xs text-secondary font-mono font-bold uppercase bg-secondary/10 px-3 py-1 rounded border border-secondary/20">
-            {rooms.length} Suites de autor
+            {rooms.length} Apartamentos
           </span>
         </div>
  
@@ -53,9 +53,9 @@ export default function LandingPage({ rooms, heroImageUrl, onSelectRoom, onLogin
             <div className="w-14 h-14 mx-auto rounded-full bg-warm-card border border-warm-border flex items-center justify-center text-dark-muted">
               <Building2 className="w-7 h-7" />
             </div>
-            <h3 className="font-display font-semibold text-lg text-dark mt-4">Aún no hay habitaciones configuradas</h3>
+            <h3 className="font-display font-semibold text-lg text-dark mt-4">Aún no hay apartamentos configurados</h3>
             <p className="text-sm text-dark-muted mt-2 max-w-md mx-auto">
-              Cuando la administración cree las primeras habitaciones en Firestore, aparecerán aquí automáticamente.
+              Cuando la administración cree los primeros apartamentos en Firestore, aparecerán aquí automáticamente.
             </p>
           </div>
         ) : (

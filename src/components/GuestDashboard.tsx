@@ -119,7 +119,7 @@ export default function GuestDashboard({
   if (!activeRoom) {
     return (
       <div className="p-6 text-center text-dark-muted font-semibold">
-        No se encontraron apartaestudios cargados.
+        No se encontraron apartamentos cargados.
       </div>
     );
   }
@@ -444,15 +444,15 @@ export default function GuestDashboard({
   return (
     <div className="w-full max-w-none py-5 space-y-6">
       
-      {/* 1. Header & Selector de Apartaestudio */}
+      {/* 1. Header & Selector de Apartamento */}
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 border-b border-warm-border pb-5">
         <div>
           <h2 className="font-display font-bold text-2xl md:text-3xl text-dark leading-none">Reservar en Línea</h2>
-          <p className="text-[11px] md:text-xs text-dark-muted font-medium mt-2">Selecciona tu suite preferida y programa tu estadía en el Edificio Cardamomo</p>
+          <p className="text-[11px] md:text-xs text-dark-muted font-medium mt-2">Selecciona tu apartamento preferido y programa tu estadía en el Edificio Cardamomo</p>
         </div>
         
         <div className="w-full md:max-w-xs shrink-0 bg-white p-1 rounded-xl shadow-sm border border-warm-border">
-          <label htmlFor="room-selector" className="text-[9px] font-bold text-secondary uppercase tracking-widest block mb-1 px-2 pt-1 font-mono">Elegir Apartaestudio</label>
+          <label htmlFor="room-selector" className="text-[9px] font-bold text-secondary uppercase tracking-widest block mb-1 px-2 pt-1 font-mono">Elegir Apartamento</label>
           <select
             id="room-selector"
             value={activeRoom.id}
@@ -474,7 +474,7 @@ export default function GuestDashboard({
         {/* Left Column - Accommodation specs and Selection calendar */}
         <div className="lg:col-span-7 space-y-6">
 
-      {/* Hero Suite visual details */}
+      {/* Hero apartment visual details */}
       <div className="bg-white border border-warm-border rounded-2xl overflow-hidden shadow-sm">
         <div className="h-[120px] relative">
           <img
@@ -697,7 +697,7 @@ export default function GuestDashboard({
             disabled={bookingLoading}
             className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-warm-bg text-sm font-bold py-3.5 rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50 mt-1"
           >
-            {bookingLoading ? "Procesando Reserva..." : "Confirmar y Separar Habitación"}
+            {bookingLoading ? "Procesando Reserva..." : "Confirmar y Separar Apartamento"}
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
@@ -730,7 +730,7 @@ export default function GuestDashboard({
         ) : (
           <div className="space-y-3">
             {myBookings.map((b) => {
-              const rDetails = rooms.find(rm => rm.id === b.roomId) || { name: "Apartaestudio" };
+              const rDetails = rooms.find(rm => rm.id === b.roomId) || { name: "Apartamento" };
               return (
                 <div 
                   key={b.id} 
