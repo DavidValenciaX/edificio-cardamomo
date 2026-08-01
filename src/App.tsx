@@ -254,7 +254,7 @@ export default function App() {
             <span>Edificio Cardamomo</span>
           </div>
           <span className="text-[9px] text-dark-muted/65 italic font-medium mt-1 md:mt-0 font-serif">
-            © 2026 Reservas Móviles de Lujo. Neiva, Huila, Colombia.
+            © 2026 Edificio Cardamomo. Neiva, Huila, Colombia.
           </span>
         </div>
       </footer>

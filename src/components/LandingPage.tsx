@@ -185,7 +185,7 @@ export default function LandingPage({ rooms, heroImageUrl, onSelectRoom, onLogin
                 <MapPin className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] text-dark-muted uppercase font-bold block leading-none">Dirección de Firma</span>
+                <span className="text-[10px] text-dark-muted uppercase font-bold block leading-none">Dirección</span>
                 <span className="text-xs md:text-sm font-semibold text-dark block mt-1.5 leading-relaxed">Calle 61 #1b-75, Neiva, Huila, Colombia</span>
               </div>
             </div>
