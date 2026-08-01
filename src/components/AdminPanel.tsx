@@ -503,9 +503,6 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       {/* Editorial Dashboard Top Header */}
       <div className="border-b-2 border-secondary pb-3.5 flex items-end justify-between">
         <div>
-          <span className="text-primary font-mono font-bold text-[9px] uppercase tracking-widest block mb-0.5">
-            Admin Panel v1.2
-          </span>
           <h1 className="font-display font-medium text-2xl text-dark leading-none">
             Edificio Cardamomo
           </h1>
@@ -554,7 +551,6 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="font-display font-bold text-xs uppercase tracking-wider text-dark leading-none">Canal iCal Booking/Airbnb</h3>
-                <span className="text-[9px] text-dark-muted block mt-1 font-medium">Sincroniza ocupación cada 15 minutos en segundo plano</span>
               </div>
               <button
                 onClick={triggerManualICalSync}
