@@ -11,6 +11,7 @@ import {
 import { db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { getApiUrl, getPublicApiOrigin } from "../lib/api";
 import { firebaseConfig } from "../lib/firebaseConfig";
+import { DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 import { Room, Settings, NotificationConfig } from "../types";
 import { 
   Plus, Edit2, Trash2, Settings as SettingsIcon, Bell, RefreshCw, 
@@ -20,6 +21,20 @@ import {
 interface AdminPanelProps {
   rooms: Room[];
   onRefreshRooms: () => void;
+}
+
+function buildEmptySettings(): Settings {
+  return {
+    hotelLogoUrl: "",
+    notificationConfig: {
+      emailEnabled: false,
+      emailDestination: "",
+      whatsappEnabled: false,
+      whatsappDestination: "",
+      smsEnabled: false,
+      smsDestination: "",
+    },
+  };
 }
 
 export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
@@ -55,23 +70,11 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       if (snap.exists()) {
         setSettings(snap.data() as Settings);
       } else {
-        // Create initial default Settings doc
-        const defaultSettings: Settings = {
-          hotelLogoUrl: "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&w=150&q=80",
-          notificationConfig: {
-            emailEnabled: true,
-            emailDestination: "edificiocardamomo@gmail.com",
-            whatsappEnabled: true,
-            whatsappDestination: "+573188198842",
-            smsEnabled: false,
-            smsDestination: "+573188198842"
-          }
-        };
-        await setDoc(doc(db, "settings", "global"), defaultSettings);
-        setSettings(defaultSettings);
+        setSettings(buildEmptySettings());
       }
     } catch (err) {
       console.error("Error fetching settings:", err);
+      setSettings(buildEmptySettings());
     } finally {
       setLoadingSettings(false);
     }
@@ -111,10 +114,10 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     if (!settings) return;
 
     try {
-      await updateDoc(doc(db, "settings", "global"), {
+      await setDoc(doc(db, "settings", "global"), {
         hotelLogoUrl: settings.hotelLogoUrl,
         notificationConfig: settings.notificationConfig
-      });
+      }, { merge: true });
       alert("Configuraciones de alertas actualizadas de forma segura en Firestore.");
     } catch (err: any) {
       console.error("Save config error:", err);
@@ -142,7 +145,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       setRoomDesc("");
       setRoomPrice(170000);
       setRoomCapacity(2);
-      setRoomImages(["https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=800&q=80"]);
+      setRoomImages([]);
       setAirbnbUrl("");
       setBookingUrl("");
       setBlockedDates([]);
@@ -239,8 +242,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
   // Real stats computation
   const totalBlockedDays = rooms.reduce((acc, r) => acc + (r.blockedDates ? r.blockedDates.length : 0), 0);
-  const hasICalSync = rooms.some(r => r.airbnb_ical_url || r.booking_ical_url);
-  const occupancyPercentage = rooms.length > 0 ? Math.min(100, Math.max(45, Math.round((totalBlockedDays / (rooms.length * 30)) * 100) + 72)) : 84;
+  const roomsWithICal = rooms.filter((r) => r.airbnb_ical_url || r.booking_ical_url).length;
 
   return (
     <div className="w-full max-w-none py-5 space-y-6">
@@ -257,18 +259,18 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
         </div>
         <div className="text-right text-[8px] text-secondary font-mono leading-tight">
           <span className="font-bold block">PROJECT: {firebaseConfig.projectId}</span>
-          <span className="block opacity-95">REGION: GLOBAL MULTI</span>
+          <span className="block opacity-95">DB: {firebaseConfig.firestoreDatabaseId}</span>
         </div>
       </div>
 
-      {/* Editorial Stats Grid */}
+      {/* Operational Stats Grid */}
       <div className="grid grid-cols-3 gap-2.5">
         <div className="bg-accent/15 p-3 rounded border-l-[3px] border-accent shadow-sm">
           <span className="text-[8px] text-secondary font-mono tracking-wider block font-bold leading-none mb-1.5 uppercase">
-            OCUPACIÓN MES
+            HABITACIONES
           </span>
           <span className="text-xl font-display font-bold text-dark leading-none">
-            {occupancyPercentage}%
+            {rooms.length}
           </span>
         </div>
         <div className="bg-accent/15 p-3 rounded border-l-[3px] border-accent shadow-sm">
@@ -281,10 +283,10 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
         </div>
         <div className="bg-accent/15 p-3 rounded border-l-[3px] border-accent shadow-sm">
           <span className="text-[8px] text-secondary font-mono tracking-wider block font-bold leading-none mb-1.5 uppercase">
-            ESTADO SINC
+            CON ICAL
           </span>
-          <span className="text-xs font-mono font-bold text-primary leading-none uppercase flex items-center gap-0.5 mt-0.5">
-            ● {hasICalSync ? "ACTIVA" : "OK"}
+          <span className="text-xl font-display font-bold text-dark leading-none">
+            {roomsWithICal}
           </span>
         </div>
       </div>
@@ -332,8 +334,10 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                     id="blocker-room-id"
                     value={blockerRoomId}
                     onChange={(e) => setBlockerRoomId(e.target.value)}
+                    disabled={rooms.length === 0}
                     className="w-full bg-warm-card border border-warm-border rounded-lg p-2 text-[11px] font-semibold text-dark"
                   >
+                    {rooms.length === 0 && <option value="">Sin habitaciones</option>}
                     {rooms.map(r => (
                       <option key={r.id} value={r.id}>{r.name}</option>
                     ))}
@@ -348,6 +352,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                     required
                     value={manualBlockDate}
                     onChange={(e) => setManualBlockDate(e.target.value)}
+                    disabled={rooms.length === 0}
                     className="w-full bg-warm-card border border-warm-border rounded-lg p-1.5 text-[11px] text-dark font-mono font-bold"
                   />
                 </div>
@@ -355,6 +360,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
               <button
                 type="submit"
+                disabled={rooms.length === 0}
                 className="w-full bg-secondary hover:bg-secondary-hover text-warm-bg py-2 rounded-lg font-bold font-mono text-[10px]"
               >
                 Bloquear / Liberar Fecha
@@ -380,12 +386,19 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                   <input
                     id="hotel-logo-url"
                     type="text"
-                    required
                     value={settings.hotelLogoUrl}
                     onChange={(e) => setSettings({ ...settings, hotelLogoUrl: e.target.value })}
                     className="w-full bg-warm-card border border-warm-border rounded-lg py-2 px-3 text-dark text-[11px]"
+                    placeholder="https://..."
                   />
-                  <span className="text-[8px] text-dark-muted block mt-1">Este logotipo se mostrará dinámicamente en todo el hotel y la barra de navegación.</span>
+                  <div className="mt-2 flex items-center gap-3">
+                    <img
+                      src={settings.hotelLogoUrl || DEFAULT_LOGO_PLACEHOLDER}
+                      alt="Vista previa del logo"
+                      className="w-10 h-10 rounded-full object-cover border border-warm-border"
+                    />
+                    <span className="text-[8px] text-dark-muted block">Si lo dejas vacío, la app mostrará un placeholder neutro hasta que cargues el logo real.</span>
+                  </div>
                 </div>
 
                 <div className="h-px bg-warm-border"></div>
@@ -557,10 +570,14 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
               </div>
 
               <div className="space-y-3.5">
-                {rooms.map((room) => (
+                {rooms.length === 0 ? (
+                  <div className="bg-white border border-dashed border-warm-border rounded-xl p-6 text-center text-sm text-dark-muted">
+                    Aún no hay habitaciones configuradas. Crea la primera desde el botón <strong>Nueva Habitación</strong>.
+                  </div>
+                ) : rooms.map((room) => (
                   <div key={room.id} className="bg-white border border-warm-border rounded-xl p-3.5 flex gap-4 items-center relative shadow-sm">
                     <img
-                      src={room.images[0] || "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?auto=format&fit=crop&w=150&q=80"}
+                      src={room.images[0] || DEFAULT_ROOM_IMAGE_PLACEHOLDER}
                       alt={room.name}
                       referrerPolicy="no-referrer"
                       className="w-20 h-20 rounded-lg object-cover border border-warm-border shrink-0 animate-fade-in"

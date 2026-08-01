@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { getApiUrl } from "../lib/api";
+import { DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 import { Room, Booking, UserProfile, GuestContact } from "../types";
 import { Calendar as CalendarIcon, Check, Users, DollarSign, ArrowRight, ShieldCheck, Info, X } from "lucide-react";
 
@@ -38,9 +39,9 @@ export default function GuestDashboard({
   const activeRoom = rooms.find(r => r.id === selectedRoomId) || rooms[0] || null;
 
   // Calendar parameters
-  const [currentDate] = useState(new Date("2026-06-02")); // Match the system 2026 current time
-  const [calendarMonth, setCalendarMonth] = useState(5); // June (0-indexed is 5)
-  const [calendarYear, setCalendarYear] = useState(2026);
+  const [currentDate] = useState(() => new Date());
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth());
+  const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
 
   // Booking details
   const [checkIn, setCheckIn] = useState<string | null>(null); // YYYY-MM-DD
@@ -164,7 +165,8 @@ export default function GuestDashboard({
   const handleDayClick = (dateStr: string) => {
     setBookingError("");
     const clickedDate = new Date(dateStr);
-    const today = new Date("2026-06-02"); // Consistent current time
+    const today = new Date(currentDate);
+    today.setHours(0, 0, 0, 0);
 
     if (clickedDate < today) {
       setBookingError("No puede reservar en el pasado.");
@@ -476,7 +478,7 @@ export default function GuestDashboard({
       <div className="bg-white border border-warm-border rounded-2xl overflow-hidden shadow-sm">
         <div className="h-[120px] relative">
           <img
-            src={activeRoom.images[0] || "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?auto=format&fit=crop&w=500&q=80"}
+            src={activeRoom.images[0] || DEFAULT_ROOM_IMAGE_PLACEHOLDER}
             alt={activeRoom.name}
             referrerPolicy="no-referrer"
             className="w-full h-full object-cover"
@@ -506,25 +508,38 @@ export default function GuestDashboard({
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => {
-                if (calendarMonth === 5) { // Minimum June 2026 for demonstration
+                const minMonth = currentDate.getMonth();
+                const minYear = currentDate.getFullYear();
+                if (calendarYear === minYear && calendarMonth === minMonth) {
+                  return;
+                }
+                if (calendarMonth === 0) {
+                  setCalendarMonth(11);
+                  setCalendarYear(calendarYear - 1);
                   return;
                 }
                 setCalendarMonth(calendarMonth - 1);
               }}
               className="px-2.5 py-1 text-xs font-bold rounded-lg border border-warm-border bg-warm-bg text-dark disabled:opacity-40"
-              disabled={calendarMonth === 5}
+              disabled={calendarYear === currentDate.getFullYear() && calendarMonth === currentDate.getMonth()}
             >
               Ant
             </button>
             <button
               onClick={() => {
-                if (calendarMonth === 6) { // Maximum July 2026 for demo
+                const maxDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 12, 1);
+                if (calendarYear === maxDate.getFullYear() && calendarMonth === maxDate.getMonth()) {
+                  return;
+                }
+                if (calendarMonth === 11) {
+                  setCalendarMonth(0);
+                  setCalendarYear(calendarYear + 1);
                   return;
                 }
                 setCalendarMonth(calendarMonth + 1);
               }}
               className="px-2.5 py-1 text-xs font-bold rounded-lg border border-warm-border bg-warm-bg text-dark disabled:opacity-40"
-              disabled={calendarMonth === 6}
+              disabled={calendarYear === new Date(currentDate.getFullYear(), currentDate.getMonth() + 12, 1).getFullYear() && calendarMonth === new Date(currentDate.getFullYear(), currentDate.getMonth() + 12, 1).getMonth()}
             >
               Sig
             </button>
@@ -548,7 +563,9 @@ export default function GuestDashboard({
             const isBlocked = day.dateStr && activeRoom.blockedDates.includes(day.dateStr);
             const isSelected = day.dateStr && isSelectedDate(day.dateStr);
             const isBetween = day.dateStr && isBetweenDate(day.dateStr);
-            const isPast = day.dateStr && new Date(day.dateStr) < new Date("2026-06-02");
+            const currentDay = new Date(currentDate);
+            currentDay.setHours(0, 0, 0, 0);
+            const isPast = day.dateStr && new Date(day.dateStr) < currentDay;
 
             return (
               <button
@@ -576,7 +593,7 @@ export default function GuestDashboard({
                 {isBlocked && day.isCurrentMonth && (
                   <span className="w-1 h-1 bg-red-400 rounded-full absolute bottom-1"></span>
                 )}
-                {day.dateStr === "2026-06-02" && (
+                {day.dateStr === currentDate.toISOString().slice(0, 10) && (
                   <span className="w-1 h-1 bg-secondary rounded-full absolute top-1"></span>
                 )}
               </button>
@@ -809,7 +826,7 @@ export default function GuestDashboard({
             </div>
 
             <div className="bg-accent/20 border border-accent/40 rounded-xl p-2.5 text-[9px] text-dark-muted/95 text-left leading-normal">
-              🔔 <strong>Notificaciones de Alerta:</strong> Se ha despachado una simulación de alerta de reserva a los canales autorizados de la administración (Email y WhatsApp) según las preferencias configuradas en el Panel de Administración.
+              🔔 <strong>Notificaciones:</strong> La reserva quedó registrada correctamente. El envío de avisos a la administración depende de la configuración activa del panel y de las integraciones disponibles en backend.
             </div>
 
             <button

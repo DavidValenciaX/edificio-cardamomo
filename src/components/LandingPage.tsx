@@ -1,5 +1,6 @@
-import { Calendar, ChevronRight, MapPin, Phone, ShieldCheck, Star, Wifi, Coffee, Compass, ExternalLink } from "lucide-react";
+import { Calendar, ChevronRight, MapPin, Phone, ShieldCheck, Wifi, Coffee, Compass, ExternalLink, Building2 } from "lucide-react";
 import { Room } from "../types";
+import { DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 
 interface LandingPageProps {
   rooms: Room[];
@@ -34,22 +35,6 @@ export default function LandingPage({ rooms, onSelectRoom, onLoginClick, isLogge
         </div>
       </section>
 
-      {/* Quick features bar */}
-      <section className="grid grid-cols-3 gap-2 md:gap-5 px-0 py-3 md:py-6 bg-transparent">
-        <div className="bg-accent/15 p-3 md:p-4 border-l-4 border-accent rounded-r-md shadow-sm">
-          <span className="text-secondary font-display font-bold text-lg md:text-2xl block leading-none">4.9</span>
-          <span className="text-[8px] md:text-[10px] text-dark-muted font-bold uppercase tracking-wider block mt-1 leading-none">Súper Host</span>
-        </div>
-        <div className="bg-accent/15 p-3 md:p-4 border-l-4 border-accent rounded-r-md shadow-sm">
-          <span className="text-secondary font-display font-bold text-lg md:text-2xl block leading-none">100%</span>
-          <span className="text-[8px] md:text-[10px] text-dark-muted font-bold uppercase tracking-wider block mt-1 leading-none font-sans">Equipados</span>
-        </div>
-        <div className="bg-accent/15 p-3 md:p-4 border-l-4 border-accent rounded-r-md shadow-sm">
-          <span className="text-secondary font-display font-bold text-lg md:text-2xl block leading-none">WiFi</span>
-          <span className="text-[8px] md:text-[10px] text-dark-muted font-bold uppercase tracking-wider block mt-1 leading-none">Fibra Óptica</span>
-        </div>
-      </section>
-
       {/* 2. Rooms / Apartaestudios Showcase */}
       <section id="suites" className="py-8 px-0 scroll-mt-14">
         <div className="flex items-end justify-between mb-6 border-b border-warm-border/60 pb-3">
@@ -62,64 +47,71 @@ export default function LandingPage({ rooms, onSelectRoom, onLoginClick, isLogge
           </span>
         </div>
  
-        {/* Horizontal scroll cards on mobile, Grid of 2 or 3 columns on tablet and desktop */}
-        <div className="flex gap-5 overflow-x-auto pb-4 pt-1 snap-x snap-mandatory scrollbar-thin md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:overflow-x-visible md:pb-0 md:snap-none">
-          {rooms.map((room) => (
-            <div
-              key={room.id}
-              className="w-[285px] md:w-full shrink-0 md:shrink bg-white border border-warm-border/70 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 snap-start"
-            >
-              <div className="relative h-[165px] md:h-[200px]">
-                <img
-                  src={room.images[0] || "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?auto=format&fit=crop&w=500&q=80"}
-                  alt={room.name}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
-                />
-                <div className="absolute top-3 right-3 bg-dark/80 text-accent font-bold text-[9px] md:text-[10px] font-mono px-2.5 py-1 rounded flex items-center gap-1 border border-accent/25">
-                  <Star className="w-2.5 h-2.5 md:w-3 md:h-3 fill-accent text-accent" />
-                  <span>4.9</span>
+        {rooms.length === 0 ? (
+          <div className="bg-white border border-dashed border-warm-border rounded-2xl p-8 text-center shadow-sm">
+            <div className="w-14 h-14 mx-auto rounded-full bg-warm-card border border-warm-border flex items-center justify-center text-dark-muted">
+              <Building2 className="w-7 h-7" />
+            </div>
+            <h3 className="font-display font-semibold text-lg text-dark mt-4">Aún no hay habitaciones configuradas</h3>
+            <p className="text-sm text-dark-muted mt-2 max-w-md mx-auto">
+              Cuando la administración cree las primeras habitaciones en Firestore, aparecerán aquí automáticamente.
+            </p>
+          </div>
+        ) : (
+          <div className="flex gap-5 overflow-x-auto pb-4 pt-1 snap-x snap-mandatory scrollbar-thin md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6 md:overflow-x-visible md:pb-0 md:snap-none">
+            {rooms.map((room) => (
+              <div
+                key={room.id}
+                className="w-[285px] md:w-full shrink-0 md:shrink bg-white border border-warm-border/70 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 snap-start"
+              >
+                <div className="relative h-[165px] md:h-[200px]">
+                  <img
+                    src={room.images[0] || DEFAULT_ROOM_IMAGE_PLACEHOLDER}
+                    alt={room.name}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]"
+                  />
+                  <div className="absolute bottom-3 left-3 bg-primary text-warm-bg text-[9px] md:text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+                    Cap: {room.capacity} {room.capacity > 1 ? "Personas" : "Persona"}
+                  </div>
                 </div>
-                <div className="absolute bottom-3 left-3 bg-primary text-warm-bg text-[9px] md:text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                  Cap: {room.capacity} {room.capacity > 1 ? "Personas" : "Persona"}
-                </div>
-              </div>
- 
-              <div className="p-4 space-y-2">
-                <div>
-                  <h3 className="font-display font-medium text-base md:text-lg text-dark truncate">
-                    {room.name}
-                  </h3>
-                  <span className="text-[8px] md:text-[9px] text-secondary font-mono uppercase tracking-widest block font-bold mt-0.5">
-                    Neiva, Huila
-                  </span>
-                </div>
-                <p className="text-[11px] md:text-xs text-dark-muted line-clamp-2 leading-relaxed font-sans">
-                  {room.description}
-                </p>
- 
-                <div className="pt-3 border-t border-warm-border/60 flex items-center justify-between">
+
+                <div className="p-4 space-y-2">
                   <div>
-                    <span className="text-[8px] md:text-[9px] text-dark-muted font-bold block uppercase tracking-wider leading-none">Tarifa base</span>
-                    <span className="text-xs md:text-sm font-bold text-primary font-mono block mt-1">
-                      ${room.pricePerNight.toLocaleString()} COP / noche
+                    <h3 className="font-display font-medium text-base md:text-lg text-dark truncate">
+                      {room.name}
+                    </h3>
+                    <span className="text-[8px] md:text-[9px] text-secondary font-mono uppercase tracking-widest block font-bold mt-0.5">
+                      Neiva, Huila
                     </span>
                   </div>
-                  
-                  <button
-                    onClick={() => {
-                      onSelectRoom(room.id);
-                    }}
-                    className="flex items-center gap-1 bg-primary hover:bg-primary-hover text-warm-bg text-[10px] md:text-xs uppercase font-bold py-1.5 px-3 md:py-2 md:px-4 rounded transition-all active:scale-95 shadow-sm font-sans tracking-wide"
-                  >
-                    <span>Reservar</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
+                  <p className="text-[11px] md:text-xs text-dark-muted line-clamp-2 leading-relaxed font-sans">
+                    {room.description}
+                  </p>
+
+                  <div className="pt-3 border-t border-warm-border/60 flex items-center justify-between">
+                    <div>
+                      <span className="text-[8px] md:text-[9px] text-dark-muted font-bold block uppercase tracking-wider leading-none">Tarifa base</span>
+                      <span className="text-xs md:text-sm font-bold text-primary font-mono block mt-1">
+                        ${room.pricePerNight.toLocaleString()} COP / noche
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        onSelectRoom(room.id);
+                      }}
+                      className="flex items-center gap-1 bg-primary hover:bg-primary-hover text-warm-bg text-[10px] md:text-xs uppercase font-bold py-1.5 px-3 md:py-2 md:px-4 rounded transition-all active:scale-95 shadow-sm font-sans tracking-wide"
+                    >
+                      <span>Reservar</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* 3. Comodidades del Edificio (Amenities) */}

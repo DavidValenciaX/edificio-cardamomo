@@ -25,7 +25,7 @@ export default function Navbar({
         {/* Dynamic Logo & Name */}
         <div className="flex items-center gap-2 shrink-0">
           <img
-            src={logoUrl || "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&w=80&q=80"}
+            src={logoUrl}
             alt="Logo Edificio Cardamomo"
             referrerPolicy="no-referrer"
             className="w-10 h-10 rounded-full object-cover border border-secondary"

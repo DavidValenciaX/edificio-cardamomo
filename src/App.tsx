@@ -4,13 +4,13 @@ import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from "fireb
 import { auth, db } from "./lib/firebase";
 import { omitUndefinedFields } from "./lib/firestoreData";
 import { UserProfile, Room, Settings } from "./types";
-import { DEFAULT_ROOMS, DEFAULT_SETTINGS } from "./data";
+import { DEFAULT_LOGO_PLACEHOLDER } from "./data";
 import Navbar from "./components/Navbar";
 import LoginModal from "./components/LoginModal";
 import LandingPage from "./components/LandingPage";
 import GuestDashboard from "./components/GuestDashboard";
 import AdminPanel from "./components/AdminPanel";
-import { ShieldCheck, Calendar, Info, Heart, Award } from "lucide-react";
+import { ShieldCheck, Award } from "lucide-react";
 
 const ADMIN_EMAIL = (import.meta as any).env?.VITE_ADMIN_EMAIL || "edificiocardamomo@gmail.com";
 
@@ -48,7 +48,7 @@ export default function App() {
   // App states
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
-  const [settingsLogo, setSettingsLogo] = useState(DEFAULT_SETTINGS.hotelLogoUrl);
+  const [settingsLogo, setSettingsLogo] = useState("");
   
   // Navigation & Dialog toggles
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -102,35 +102,30 @@ export default function App() {
   const fetchRoomsAndSettings = async () => {
     setLoadingRooms(true);
     try {
-      // 1. Fetch Rooms
       const roomsColRef = collection(db, "rooms");
       const snap = await getDocs(roomsColRef);
       let list: Room[] = [];
       snap.forEach((doc) => {
         list.push({ id: doc.id, ...doc.data() } as Room);
       });
-
-      if (list.length === 0) {
-        console.warn("[firestore] 'rooms' collection is empty. Using local defaults until rooms are created in Firestore.");
-        list = [...DEFAULT_ROOMS];
-      }
       setRooms(list);
+    } catch (err) {
+      console.error("[firestore] Failed to fetch rooms.", err);
+      setRooms([]);
+    }
 
-      // 2. Fetch Settings
+    try {
       const settingsSnap = await getDoc(doc(db, "settings", "global"));
       if (settingsSnap.exists()) {
         const s = settingsSnap.data() as Settings;
-        setSettingsLogo(s.hotelLogoUrl);
+        setSettingsLogo(typeof s.hotelLogoUrl === "string" ? s.hotelLogoUrl : "");
       } else {
-        console.warn("[firestore] 'settings/global' does not exist yet. Using default branding locally.");
-        setSettingsLogo(DEFAULT_SETTINGS.hotelLogoUrl);
+        console.warn("[firestore] 'settings/global' does not exist yet. Using empty logo placeholder.");
+        setSettingsLogo("");
       }
-
     } catch (err) {
-      console.error("Failed to fetch Rooms from live database. Utilizing fallback local records:", err);
-      // Fallback
-      setRooms(DEFAULT_ROOMS);
-      setSettingsLogo(DEFAULT_SETTINGS.hotelLogoUrl);
+      console.error("[firestore] Failed to fetch settings.", err);
+      setSettingsLogo("");
     } finally {
       setLoadingRooms(false);
     }
@@ -177,7 +172,7 @@ export default function App() {
         onLoginClick={() => setIsLoginOpen(true)}
         onLogout={handleLogout}
         onToggleRole={handleToggleRole}
-        logoUrl={settingsLogo}
+        logoUrl={settingsLogo || DEFAULT_LOGO_PLACEHOLDER}
       />
 
       {/* Primary Workspace Scroll Layer */}
