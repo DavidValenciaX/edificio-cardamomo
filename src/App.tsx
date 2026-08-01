@@ -4,7 +4,7 @@ import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from "fireb
 import { auth, db } from "./lib/firebase";
 import { omitUndefinedFields } from "./lib/firestoreData";
 import { UserProfile, Room, Settings } from "./types";
-import { DEFAULT_LOGO_PLACEHOLDER } from "./data";
+import { DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER } from "./data";
 import Navbar from "./components/Navbar";
 import LoginModal from "./components/LoginModal";
 import LandingPage from "./components/LandingPage";
@@ -49,6 +49,7 @@ export default function App() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [settingsLogo, setSettingsLogo] = useState("");
+  const [heroBannerUrl, setHeroBannerUrl] = useState("");
   
   // Navigation & Dialog toggles
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -119,13 +120,16 @@ export default function App() {
       if (settingsSnap.exists()) {
         const s = settingsSnap.data() as Settings;
         setSettingsLogo(typeof s.hotelLogoUrl === "string" ? s.hotelLogoUrl : "");
+        setHeroBannerUrl(typeof s.heroBannerUrl === "string" ? s.heroBannerUrl : "");
       } else {
         console.warn("[firestore] 'settings/global' does not exist yet. Using empty logo placeholder.");
         setSettingsLogo("");
+        setHeroBannerUrl("");
       }
     } catch (err) {
       console.error("[firestore] Failed to fetch settings.", err);
       setSettingsLogo("");
+      setHeroBannerUrl("");
     } finally {
       setLoadingRooms(false);
     }
@@ -221,6 +225,7 @@ export default function App() {
               /* Public general screen */
               <LandingPage
                 rooms={rooms}
+                heroImageUrl={heroBannerUrl || DEFAULT_HERO_PLACEHOLDER}
                 onSelectRoom={(roomId) => {
                   setSelectedRoomId(roomId);
                 }}

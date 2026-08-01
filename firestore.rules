@@ -99,6 +99,7 @@ service cloud.firestore {
 
     function isValidSettings(data) {
       return data.hotelLogoUrl is string && data.hotelLogoUrl.size() <= 2048
+        && data.heroBannerUrl is string && data.heroBannerUrl.size() <= 2048
         && data.notificationConfig is map
         && data.notificationConfig.emailEnabled is bool
         && data.notificationConfig.emailDestination is string && data.notificationConfig.emailDestination.size() <= 200

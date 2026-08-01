@@ -12,7 +12,7 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, handleFirestoreError, OperationType, storage } from "../lib/firebase";
 import { getApiUrl, getPublicApiOrigin } from "../lib/api";
 import { firebaseConfig } from "../lib/firebaseConfig";
-import { DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
+import { DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 import { Room, Settings, NotificationConfig } from "../types";
 import { 
   Plus, Edit2, Trash2, Settings as SettingsIcon, Bell, RefreshCw, 
@@ -27,6 +27,7 @@ interface AdminPanelProps {
 function buildEmptySettings(): Settings {
   return {
     hotelLogoUrl: "",
+    heroBannerUrl: "",
     notificationConfig: {
       emailEnabled: false,
       emailDestination: "",
@@ -38,12 +39,28 @@ function buildEmptySettings(): Settings {
   };
 }
 
+function normalizeSettings(raw?: Partial<Settings> | null): Settings {
+  const defaults = buildEmptySettings();
+  return {
+    hotelLogoUrl: raw?.hotelLogoUrl || defaults.hotelLogoUrl,
+    heroBannerUrl: raw?.heroBannerUrl || defaults.heroBannerUrl,
+    notificationConfig: {
+      ...defaults.notificationConfig,
+      ...(raw?.notificationConfig || {}),
+    },
+  };
+}
+
 export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
   // Global Hotel Settings
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingHeroBanner, setUploadingHeroBanner] = useState(false);
+  const [uploadingRoomImages, setUploadingRoomImages] = useState(false);
   const [logoUploadError, setLogoUploadError] = useState("");
+  const [heroBannerUploadError, setHeroBannerUploadError] = useState("");
+  const [roomImagesUploadError, setRoomImagesUploadError] = useState("");
 
   // States for CRUD Apartment
   const [editingRoom, setEditingRoom] = useState<Partial<Room> | null>(null); // Null means list view, non-null means form view
@@ -53,7 +70,6 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
   const [roomPrice, setRoomPrice] = useState(0);
   const [roomCapacity, setRoomCapacity] = useState(2);
   const [roomImages, setRoomImages] = useState<string[]>([]);
-  const [newImageInput, setNewImageInput] = useState("");
   const [airbnbUrl, setAirbnbUrl] = useState("");
   const [bookingUrl, setBookingUrl] = useState("");
   const [blockedDates, setBlockedDates] = useState<string[]>([]);
@@ -71,7 +87,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     try {
       const snap = await getDoc(doc(db, "settings", "global"));
       if (snap.exists()) {
-        setSettings(snap.data() as Settings);
+        setSettings(normalizeSettings(snap.data() as Partial<Settings>));
       } else {
         setSettings(buildEmptySettings());
       }
@@ -83,6 +99,26 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     }
   };
 
+  const uploadImageFile = async (file: File, destinationPath: string) => {
+    if (!file.type.startsWith("image/")) {
+      throw new Error("Selecciona una imagen válida.");
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      throw new Error("Cada imagen debe pesar menos de 5 MB.");
+    }
+
+    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "-").toLowerCase();
+    const storageRef = ref(storage, `${destinationPath}/${Date.now()}-${sanitizedName}`);
+
+    await uploadBytes(storageRef, file, {
+      contentType: file.type,
+      cacheControl: "public,max-age=3600",
+    });
+
+    return getDownloadURL(storageRef);
+  };
+
   const handleLogoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -92,36 +128,11 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       return;
     }
 
-    if (!file.type.startsWith("image/")) {
-      setLogoUploadError("Selecciona una imagen válida para el logo.");
-      event.target.value = "";
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setLogoUploadError("El logo debe pesar menos de 5 MB.");
-      event.target.value = "";
-      return;
-    }
-
     setUploadingLogo(true);
     setLogoUploadError("");
 
     try {
-      const fileExtension = file.name.includes(".")
-        ? file.name.split(".").pop()?.toLowerCase()
-        : "png";
-      const storageRef = ref(
-        storage,
-        `branding/hotel-logo-${Date.now()}.${fileExtension || "png"}`
-      );
-
-      await uploadBytes(storageRef, file, {
-        contentType: file.type,
-        cacheControl: "public,max-age=3600",
-      });
-
-      const downloadUrl = await getDownloadURL(storageRef);
+      const downloadUrl = await uploadImageFile(file, "branding/logo");
       const nextSettings = {
         ...settings,
         hotelLogoUrl: downloadUrl,
@@ -129,14 +140,47 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
       await setDoc(doc(db, "settings", "global"), {
         hotelLogoUrl: downloadUrl,
+        heroBannerUrl: settings.heroBannerUrl || "",
       }, { merge: true });
 
       setSettings(nextSettings);
     } catch (error) {
       console.error("Logo upload failed:", error);
-      setLogoUploadError("No se pudo subir el logo. Revisa Storage y sus reglas.");
+      setLogoUploadError(error instanceof Error ? error.message : "No se pudo subir el logo. Revisa Storage y sus reglas.");
     } finally {
       setUploadingLogo(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleHeroBannerUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!settings) {
+      event.target.value = "";
+      return;
+    }
+
+    setUploadingHeroBanner(true);
+    setHeroBannerUploadError("");
+
+    try {
+      const downloadUrl = await uploadImageFile(file, "branding/hero");
+      await setDoc(doc(db, "settings", "global"), {
+        hotelLogoUrl: settings.hotelLogoUrl || "",
+        heroBannerUrl: downloadUrl,
+      }, { merge: true });
+
+      setSettings({
+        ...settings,
+        heroBannerUrl: downloadUrl,
+      });
+    } catch (error) {
+      console.error("Hero banner upload failed:", error);
+      setHeroBannerUploadError(error instanceof Error ? error.message : "No se pudo subir la imagen principal.");
+    } finally {
+      setUploadingHeroBanner(false);
       event.target.value = "";
     }
   };
@@ -147,6 +191,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     try {
       await setDoc(doc(db, "settings", "global"), {
         hotelLogoUrl: "",
+        heroBannerUrl: settings.heroBannerUrl || "",
       }, { merge: true });
 
       setSettings({
@@ -157,6 +202,26 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     } catch (error) {
       console.error("Logo removal failed:", error);
       setLogoUploadError("No se pudo quitar el logo actual.");
+    }
+  };
+
+  const handleRemoveHeroBanner = async () => {
+    if (!settings) return;
+
+    try {
+      await setDoc(doc(db, "settings", "global"), {
+        hotelLogoUrl: settings.hotelLogoUrl || "",
+        heroBannerUrl: "",
+      }, { merge: true });
+
+      setSettings({
+        ...settings,
+        heroBannerUrl: "",
+      });
+      setHeroBannerUploadError("");
+    } catch (error) {
+      console.error("Hero banner removal failed:", error);
+      setHeroBannerUploadError("No se pudo quitar la imagen principal.");
     }
   };
 
@@ -196,6 +261,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     try {
       await setDoc(doc(db, "settings", "global"), {
         hotelLogoUrl: settings.hotelLogoUrl,
+        heroBannerUrl: settings.heroBannerUrl,
         notificationConfig: settings.notificationConfig
       }, { merge: true });
       alert("Configuraciones de alertas actualizadas de forma segura en Firestore.");
@@ -226,6 +292,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       setRoomPrice(170000);
       setRoomCapacity(2);
       setRoomImages([]);
+      setRoomImagesUploadError("");
       setAirbnbUrl("");
       setBookingUrl("");
       setBlockedDates([]);
@@ -276,11 +343,30 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     }
   };
 
-  // Add Dynamic Mock Images
-  const handleAddImage = () => {
-    if (newImageInput.trim()) {
-      setRoomImages([...roomImages, newImageInput.trim()]);
-      setNewImageInput("");
+  const handleRoomImagesUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []) as File[];
+    if (files.length === 0) return;
+
+    if (!roomIdInput) {
+      setRoomImagesUploadError("Define primero el ID de la habitación antes de subir imágenes.");
+      event.target.value = "";
+      return;
+    }
+
+    setUploadingRoomImages(true);
+    setRoomImagesUploadError("");
+
+    try {
+      const uploadedUrls = await Promise.all(
+        files.map((file) => uploadImageFile(file, `rooms/${roomIdInput}`))
+      );
+      setRoomImages((currentImages) => [...currentImages, ...uploadedUrls].slice(0, 10));
+    } catch (error) {
+      console.error("Room images upload failed:", error);
+      setRoomImagesUploadError(error instanceof Error ? error.message : "No se pudieron subir las imágenes.");
+    } finally {
+      setUploadingRoomImages(false);
+      event.target.value = "";
     }
   };
 
@@ -452,7 +538,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
           <section className="bg-white border border-warm-border rounded-xl p-4 shadow-sm space-y-4">
             <div>
               <h3 className="font-display font-bold text-xs uppercase tracking-wider text-dark leading-none">Configuraciones de la Compañía</h3>
-              <p className="text-[9px] text-dark-muted font-medium mt-1">Configure alertas salientes y logotipo del hotel</p>
+              <p className="text-[9px] text-dark-muted font-medium mt-1">Configure alertas salientes, logotipo e imagen principal del hotel</p>
             </div>
 
             {loadingSettings ? (
@@ -494,6 +580,45 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                   {logoUploadError && (
                     <p className="mt-2 text-[10px] font-semibold text-red-600">{logoUploadError}</p>
                   )}
+                </div>
+
+                <div className="h-px bg-warm-border"></div>
+
+                <div>
+                  <label className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1">Imagen Hero / Banner</label>
+                  <div className="mt-2 space-y-3">
+                    <img
+                      src={settings.heroBannerUrl || DEFAULT_HERO_PLACEHOLDER}
+                      alt="Vista previa del banner principal"
+                      className="w-full h-32 rounded-xl object-cover border border-warm-border bg-warm-card"
+                    />
+                    <p className="text-[8px] text-dark-muted">
+                      Esta imagen se muestra en el encabezado principal de la landing pública.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <label className="inline-flex items-center justify-center gap-2 bg-secondary hover:bg-secondary-hover text-warm-bg py-2 px-3 rounded-lg text-[10px] font-bold cursor-pointer">
+                        <span>{uploadingHeroBanner ? "Subiendo..." : "Subir Banner"}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={uploadingHeroBanner}
+                          onChange={handleHeroBannerUpload}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleRemoveHeroBanner}
+                        disabled={uploadingHeroBanner || !settings.heroBannerUrl}
+                        className="py-2 px-3 rounded-lg text-[10px] font-bold border border-warm-border bg-white text-dark disabled:opacity-50"
+                      >
+                        Quitar Banner
+                      </button>
+                    </div>
+                    {heroBannerUploadError && (
+                      <p className="text-[10px] font-semibold text-red-600">{heroBannerUploadError}</p>
+                    )}
+                  </div>
                 </div>
 
                 <div className="h-px bg-warm-border"></div>
@@ -639,7 +764,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                   className="w-full bg-primary hover:bg-primary-hover text-warm-bg py-2.5 rounded-lg font-bold flex items-center justify-center gap-1 transition-all font-sans"
                 >
                   <Save className="w-4 h-4" />
-                  <span>Guardar Canales & Logo en Firestore</span>
+                  <span>Guardar Configuración</span>
                 </button>
               </form>
             ) : (
@@ -806,27 +931,32 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
                 {/* Images Manager */}
                 <div className="space-y-2 pb-1">
-                  <label htmlFor="new-image-input" className="text-[9px] font-bold text-dark uppercase tracking-wider block leading-none">Enlaces de Fotos (URLs)</label>
-                  <div className="flex gap-2">
+                  <label className="text-[9px] font-bold text-dark uppercase tracking-wider block leading-none">Fotos de la Habitación</label>
+                  <p className="text-[8px] text-dark-muted">
+                    Sube imágenes reales a Firebase Storage. Puedes cargar varias a la vez y el límite actual es de 10 fotos por habitación.
+                  </p>
+                  <label className="inline-flex items-center justify-center gap-2 bg-secondary hover:bg-secondary-hover text-warm-bg py-2 px-3 rounded-lg text-[10px] font-bold cursor-pointer w-fit">
+                    <span>{uploadingRoomImages ? "Subiendo..." : "Subir Fotos"}</span>
                     <input
-                      id="new-image-input"
-                      type="url"
-                      placeholder="https://images.unsplash.com/..."
-                      value={newImageInput}
-                      onChange={(e) => setNewImageInput(e.target.value)}
-                      className="flex-1 bg-warm-card border border-warm-border rounded-lg py-2 px-3 text-xs focus:outline-none text-dark"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      disabled={uploadingRoomImages}
+                      onChange={handleRoomImagesUpload}
                     />
-                    <button
-                      type="button"
-                      onClick={handleAddImage}
-                      className="bg-secondary hover:bg-secondary-hover text-warm-bg font-bold px-4 rounded-lg text-xs cursor-pointer"
-                    >
-                      Agregar
-                    </button>
-                  </div>
+                  </label>
+                  {roomImagesUploadError && (
+                    <p className="text-[10px] font-semibold text-red-600">{roomImagesUploadError}</p>
+                  )}
 
                   {/* Photos List scroller */}
                   <div className="flex gap-2.5 overflow-x-auto pt-1 py-1">
+                    {roomImages.length === 0 && (
+                      <div className="w-full rounded-lg border border-dashed border-warm-border bg-warm-card px-3 py-4 text-[10px] text-dark-muted text-center">
+                        Aún no has subido fotos para esta habitación.
+                      </div>
+                    )}
                     {roomImages.map((img, idx) => (
                       <div key={idx} className="relative w-14 h-14 rounded border border-warm-border overflow-hidden shrink-0">
                         <img src={img} alt="Foto" referrerPolicy="no-referrer" className="w-full h-full object-cover" />

@@ -1,22 +1,23 @@
 import { Calendar, ChevronRight, MapPin, Phone, ShieldCheck, Wifi, Coffee, Compass, ExternalLink, Building2 } from "lucide-react";
 import { Room } from "../types";
-import { DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
+import { DEFAULT_HERO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 
 interface LandingPageProps {
   rooms: Room[];
+  heroImageUrl: string;
   onSelectRoom: (roomId: string) => void;
   onLoginClick: () => void;
   isLoggedIn: boolean;
 }
 
-export default function LandingPage({ rooms, onSelectRoom, onLoginClick, isLoggedIn }: LandingPageProps) {
+export default function LandingPage({ rooms, heroImageUrl, onSelectRoom, onLoginClick, isLoggedIn }: LandingPageProps) {
   return (
     <div className="w-full bg-warm-bg pb-12">
       
       {/* 1. Hero Section */}
       <section className="relative h-[280px] md:h-[420px] w-full overflow-hidden md:rounded-2xl md:mt-4 md:shadow-md">
         <img
-          src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&q=80"
+          src={heroImageUrl || DEFAULT_HERO_PLACEHOLDER}
           alt="Edificio Cardamomo Fachada"
           referrerPolicy="no-referrer"
           className="w-full h-full object-cover"

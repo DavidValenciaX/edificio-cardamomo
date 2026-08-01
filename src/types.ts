@@ -55,5 +55,6 @@ export interface NotificationConfig {
 
 export interface Settings {
   hotelLogoUrl: string;
+  heroBannerUrl: string;
   notificationConfig: NotificationConfig;
 }

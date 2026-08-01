@@ -66,6 +66,7 @@
       "type": "object",
       "properties": {
         "hotelLogoUrl": { "type": "string", "description": "Logo of the Edificio Cardamomo hotel" },
+          "heroBannerUrl": { "type": "string", "description": "Main hero banner image displayed on the landing page" },
         "notificationConfig": {
           "type": "object",
           "description": "Configuration to enable channels & set destinations",
@@ -79,7 +80,7 @@
           }
         }
       },
-      "required": ["hotelLogoUrl", "notificationConfig"]
+      "required": ["hotelLogoUrl", "heroBannerUrl", "notificationConfig"]
     }
   },
   "firestore": {
