@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
+import { OAuth2Client } from "google-auth-library";
 import {
   initializeApp,
   getApps,
@@ -24,6 +25,9 @@ const firebaseConfig = {
   firestoreDatabaseId: process.env.FIRESTORE_DATABASE_ID || "(default)",
 };
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "edificiocardamomo@gmail.com";
+const CLOUD_SCHEDULER_OIDC_AUDIENCE = process.env.CLOUD_SCHEDULER_OIDC_AUDIENCE?.trim() || "";
+const CLOUD_SCHEDULER_OIDC_EMAIL = process.env.CLOUD_SCHEDULER_OIDC_EMAIL?.trim() || "";
+const schedulerOidcClient = new OAuth2Client();
 
 // Initialize Firebase Admin SDK (server-side).
 // Uses Application Default Credentials: GOOGLE_APPLICATION_CREDENTIALS in local
@@ -82,6 +86,135 @@ app.use((req, res, next) => {
 app.use(express.json());
 const PORT = Number(process.env.PORT || 3000);
 const ENABLE_ICAL_SYNC_TIMER = process.env.ENABLE_ICAL_SYNC_TIMER === "true";
+
+interface RoomIntegrationRecord {
+  roomId: string;
+  airbnbIcalUrl: string;
+  bookingIcalUrl: string;
+}
+
+function extractBearerToken(req: express.Request): string {
+  const authorization = req.headers.authorization || "";
+  return authorization.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length).trim()
+    : "";
+}
+
+function isLoopbackRequest(req: express.Request): boolean {
+  const forwardedFor = typeof req.headers["x-forwarded-for"] === "string"
+    ? req.headers["x-forwarded-for"].split(",")[0].trim()
+    : "";
+  const remoteAddress = forwardedFor || req.socket.remoteAddress || "";
+  return remoteAddress === "127.0.0.1" || remoteAddress === "::1" || remoteAddress === "::ffff:127.0.0.1";
+}
+
+async function isAdminBearerToken(idToken: string): Promise<boolean> {
+  try {
+    const decoded = await getAuth().verifyIdToken(idToken);
+    return decoded.email === ADMIN_EMAIL;
+  } catch {
+    return false;
+  }
+}
+
+async function isSchedulerOidcBearerToken(idToken: string): Promise<boolean> {
+  if (!CLOUD_SCHEDULER_OIDC_AUDIENCE || !CLOUD_SCHEDULER_OIDC_EMAIL) {
+    return false;
+  }
+
+  try {
+    const ticket = await schedulerOidcClient.verifyIdToken({
+      idToken,
+      audience: CLOUD_SCHEDULER_OIDC_AUDIENCE,
+    });
+    const payload = ticket.getPayload();
+    if (!payload) return false;
+
+    const issuer = payload.iss || "";
+    const issuerIsTrusted =
+      issuer === "accounts.google.com" ||
+      issuer === "https://accounts.google.com";
+
+    return issuerIsTrusted
+      && payload.email_verified === true
+      && payload.email === CLOUD_SCHEDULER_OIDC_EMAIL;
+  } catch {
+    return false;
+  }
+}
+
+async function authorizeIcalSyncRequest(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  const bearerToken = extractBearerToken(req);
+  if (bearerToken) {
+    if (await isAdminBearerToken(bearerToken)) {
+      return next();
+    }
+
+    if (await isSchedulerOidcBearerToken(bearerToken)) {
+      return next();
+    }
+
+    return res.status(403).json({
+      error: "No autorizado para sincronizar iCal. Use un token de administrador o el OIDC de Cloud Scheduler configurado.",
+    });
+  }
+
+  if (isLoopbackRequest(req)) {
+    return next();
+  }
+
+  return res.status(401).json({
+    error: "La sincronización iCal requiere autenticación de administrador o Scheduler.",
+  });
+}
+
+function normalizeRoomIntegration(raw: any, roomId: string): RoomIntegrationRecord {
+  const airbnbIcalUrl =
+    typeof raw?.airbnbIcalUrl === "string"
+      ? raw.airbnbIcalUrl.trim()
+      : typeof raw?.airbnb_ical_url === "string"
+        ? raw.airbnb_ical_url.trim()
+        : "";
+  const bookingIcalUrl =
+    typeof raw?.bookingIcalUrl === "string"
+      ? raw.bookingIcalUrl.trim()
+      : typeof raw?.booking_ical_url === "string"
+        ? raw.booking_ical_url.trim()
+        : "";
+
+  return {
+    roomId,
+    airbnbIcalUrl,
+    bookingIcalUrl,
+  };
+}
+
+async function loadRoomIntegration(roomId: string, roomData: any): Promise<RoomIntegrationRecord> {
+  const integrationRef = db.collection("roomIntegrations").doc(roomId);
+  const integrationSnap = await integrationRef.get();
+  if (integrationSnap.exists) {
+    return normalizeRoomIntegration(integrationSnap.data(), roomId);
+  }
+
+  const legacyIntegration = normalizeRoomIntegration(roomData, roomId);
+  if (!legacyIntegration.airbnbIcalUrl && !legacyIntegration.bookingIcalUrl) {
+    return legacyIntegration;
+  }
+
+  const batch = db.batch();
+  batch.set(integrationRef, legacyIntegration);
+  batch.update(db.collection("rooms").doc(roomId), {
+    airbnb_ical_url: FieldValue.delete(),
+    booking_ical_url: FieldValue.delete(),
+  });
+  await batch.commit();
+
+  return legacyIntegration;
+}
 
 // -------------------------------------------------------------
 // 0. ENDPOINT: Consolidate anonymous temporary guests into accounts
@@ -320,7 +453,7 @@ function parseICalContent(icalText: string): string[] {
 // -------------------------------------------------------------------------
 // 2. ENDPOINT: Sync External iCal URLs into Firestore (The scheduled cron)
 // -------------------------------------------------------------------------
-app.post("/api/sync-ical", async (req, res) => {
+app.post("/api/sync-ical", authorizeIcalSyncRequest, async (req, res) => {
   try {
     console.log("iCal sync triggered manually or by cron...");
     const roomsSnap = await db.collection("rooms").get();
@@ -329,6 +462,7 @@ app.post("/api/sync-ical", async (req, res) => {
     for (const roomDoc of roomsSnap.docs) {
       const room = roomDoc.data();
       const roomId = roomDoc.id;
+      const integration = await loadRoomIntegration(roomId, room);
       let newBlockedDates: string[] = [];
 
       // We parse actual local app bookings to make sure they remain blocked
@@ -353,10 +487,10 @@ app.post("/api/sync-ical", async (req, res) => {
       });
 
       // Synchronize Airbnb source
-      if (room.airbnb_ical_url) {
+      if (integration.airbnbIcalUrl) {
         try {
-          console.log(`Syncing from Airbnb for room {${room.name}}: ${room.airbnb_ical_url}`);
-          const response = await fetch(room.airbnb_ical_url);
+          console.log(`Syncing from Airbnb for room {${room.name}}: ${integration.airbnbIcalUrl}`);
+          const response = await fetch(integration.airbnbIcalUrl);
           if (response.ok) {
             const icalText = await response.text();
             const dates = parseICalContent(icalText);
@@ -368,10 +502,10 @@ app.post("/api/sync-ical", async (req, res) => {
       }
 
       // Synchronize Booking.com source
-      if (room.booking_ical_url) {
+      if (integration.bookingIcalUrl) {
         try {
-          console.log(`Syncing from Booking.com for room {${room.name}}: ${room.booking_ical_url}`);
-          const response = await fetch(room.booking_ical_url);
+          console.log(`Syncing from Booking.com for room {${room.name}}: ${integration.bookingIcalUrl}`);
+          const response = await fetch(integration.bookingIcalUrl);
           if (response.ok) {
             const icalText = await response.text();
             const dates = parseICalContent(icalText);
@@ -391,7 +525,9 @@ app.post("/api/sync-ical", async (req, res) => {
       results.push({
         roomId,
         roomName: room.name,
-        blockedDatesCount: uniqueBlockedDates.length
+        blockedDatesCount: uniqueBlockedDates.length,
+        hasAirbnbIcal: Boolean(integration.airbnbIcalUrl),
+        hasBookingIcal: Boolean(integration.bookingIcalUrl),
       });
     }
 

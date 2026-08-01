@@ -78,9 +78,13 @@ service cloud.firestore {
         && data.capacity is int && data.capacity >= 1 && data.capacity <= 30
         && data.pricePerNight is number && data.pricePerNight > 0
         && data.images is list && data.images.size() <= 10
-        && data.airbnb_ical_url is string && data.airbnb_ical_url.size() <= 1000
-        && data.booking_ical_url is string && data.booking_ical_url.size() <= 1000
         && data.blockedDates is list && data.blockedDates.size() <= 1000;
+    }
+
+    function isValidRoomIntegration(data, roomId) {
+      return data.roomId == roomId
+        && data.airbnbIcalUrl is string && data.airbnbIcalUrl.size() <= 1000
+        && data.bookingIcalUrl is string && data.bookingIcalUrl.size() <= 1000;
     }
 
     function isValidBooking(data) {
@@ -138,6 +142,16 @@ service cloud.firestore {
         isSignedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['blockedDates'])
         && request.resource.data.blockedDates is list
       );
+      allow delete: if isAdmin();
+    }
+
+    // PRIVATE ROOM INTEGRATIONS
+    match /roomIntegrations/{roomId} {
+      allow get, list: if isAdmin();
+      allow create, update: if isAdmin()
+        && isValidId(roomId)
+        && exists(/databases/$(database)/documents/rooms/$(roomId))
+        && isValidRoomIntegration(request.resource.data, roomId);
       allow delete: if isAdmin();
     }
 

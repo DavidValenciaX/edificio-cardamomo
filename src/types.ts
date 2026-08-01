@@ -22,9 +22,13 @@ export interface Room {
   capacity: number;
   pricePerNight: number;
   images: string[];
-  airbnb_ical_url: string;
-  booking_ical_url: string;
   blockedDates: string[]; // Formato YYYY-MM-DD
+}
+
+export interface RoomIntegration {
+  roomId: string;
+  airbnbIcalUrl: string;
+  bookingIcalUrl: string;
 }
 
 import type { Timestamp } from 'firebase/firestore';

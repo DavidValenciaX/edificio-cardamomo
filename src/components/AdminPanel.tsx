@@ -9,14 +9,13 @@ import {
   deleteDoc 
 } from "firebase/firestore";
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { db, handleFirestoreError, OperationType, storage } from "../lib/firebase";
+import { auth, db, handleFirestoreError, OperationType, storage } from "../lib/firebase";
 import { getApiUrl, getPublicApiOrigin } from "../lib/api";
 import { firebaseConfig } from "../lib/firebaseConfig";
 import { DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
-import { Room, Settings, NotificationConfig } from "../types";
+import { Room, RoomIntegration, Settings } from "../types";
 import { 
-  Plus, Edit2, Trash2, Settings as SettingsIcon, Bell, RefreshCw, 
-  Save, AlertTriangle, Calendar, Images, FileCode, CheckCircle 
+  Plus, Edit2, Trash2, Bell, RefreshCw, Save, CheckCircle
 } from "lucide-react";
 
 interface AdminPanelProps {
@@ -51,9 +50,18 @@ function normalizeSettings(raw?: Partial<Settings> | null): Settings {
   };
 }
 
+function buildEmptyRoomIntegration(roomId: string = ""): RoomIntegration {
+  return {
+    roomId,
+    airbnbIcalUrl: "",
+    bookingIcalUrl: "",
+  };
+}
+
 export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
   // Global Hotel Settings
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [roomIntegrations, setRoomIntegrations] = useState<Record<string, RoomIntegration>>({});
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingHeroBanner, setUploadingHeroBanner] = useState(false);
@@ -98,6 +106,25 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       setSettings(buildEmptySettings());
     } finally {
       setLoadingSettings(false);
+    }
+  };
+
+  const fetchRoomIntegrations = async () => {
+    try {
+      const snap = await getDocs(collection(db, "roomIntegrations"));
+      const nextIntegrations: Record<string, RoomIntegration> = {};
+      snap.forEach((integrationDoc) => {
+        const raw = integrationDoc.data() as Partial<RoomIntegration>;
+        nextIntegrations[integrationDoc.id] = {
+          roomId: integrationDoc.id,
+          airbnbIcalUrl: raw.airbnbIcalUrl || "",
+          bookingIcalUrl: raw.bookingIcalUrl || "",
+        };
+      });
+      setRoomIntegrations(nextIntegrations);
+    } catch (error) {
+      console.error("Error fetching room integrations:", error);
+      setRoomIntegrations({});
     }
   };
 
@@ -263,7 +290,8 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
   };
 
   useEffect(() => {
-    fetchGlobalSettings();
+    void fetchGlobalSettings();
+    void fetchRoomIntegrations();
     if (rooms.length > 0) {
       setBlockerRoomId(rooms[0].id);
     }
@@ -274,7 +302,16 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     setSyncLoading(true);
     setSyncFeedback("");
     try {
-      const response = await fetch(getApiUrl("/api/sync-ical"), { method: "POST" });
+      const headers: HeadersInit = {};
+      const idToken = await auth.currentUser?.getIdToken();
+      if (idToken) {
+        headers.Authorization = `Bearer ${idToken}`;
+      }
+
+      const response = await fetch(getApiUrl("/api/sync-ical"), {
+        method: "POST",
+        headers,
+      });
       const data = await response.json();
       if (response.ok) {
         setSyncFeedback(`Sincronización exitosa. Apartamentos actualizados.`);
@@ -311,6 +348,11 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
   // Add/Edit Apartment Form Triggers
   const openEditForm = (room: Room | null) => {
     if (room) {
+      const integration = roomIntegrations[room.id];
+      const legacyRoom = room as Room & {
+        airbnb_ical_url?: string;
+        booking_ical_url?: string;
+      };
       setEditingRoom(room);
       setRoomIdInput(room.id);
       setRoomName(room.name);
@@ -321,8 +363,8 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       setOriginalRoomImages([...room.images]);
       setPendingRoomImageDeletes([]);
       setRoomImagesUploadError("");
-      setAirbnbUrl(room.airbnb_ical_url || "");
-      setBookingUrl(room.booking_ical_url || "");
+      setAirbnbUrl(integration?.airbnbIcalUrl || legacyRoom.airbnb_ical_url || "");
+      setBookingUrl(integration?.bookingIcalUrl || legacyRoom.booking_ical_url || "");
       setBlockedDates([...room.blockedDates]);
     } else {
       setEditingRoom({});
@@ -383,13 +425,21 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       pricePerNight: Number(roomPrice),
       capacity: Number(roomCapacity),
       images: roomImages,
-      airbnb_ical_url: airbnbUrl,
-      booking_ical_url: bookingUrl,
       blockedDates: blockedDates
+    };
+    const nextIntegration = {
+      roomId: roomIdInput,
+      airbnbIcalUrl: airbnbUrl.trim(),
+      bookingIcalUrl: bookingUrl.trim(),
     };
 
     try {
       await setDoc(doc(db, "rooms", roomIdInput), roomPayload);
+      if (nextIntegration.airbnbIcalUrl || nextIntegration.bookingIcalUrl) {
+        await setDoc(doc(db, "roomIntegrations", roomIdInput), nextIntegration);
+      } else {
+        await deleteDoc(doc(db, "roomIntegrations", roomIdInput));
+      }
       for (const imageUrl of pendingRoomImageDeletes) {
         await deleteStorageFileByUrl(imageUrl);
       }
@@ -398,6 +448,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       setOriginalRoomImages([]);
       setEditingRoom(null);
       onRefreshRooms();
+      void fetchRoomIntegrations();
     } catch (err: any) {
       console.error("Save room failed:", err);
       handleFirestoreError(err, OperationType.CREATE, `rooms/${roomIdInput}`);
@@ -411,6 +462,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     try {
       const roomToDelete = rooms.find((room) => room.id === roomId);
       await deleteDoc(doc(db, "rooms", roomId));
+      await deleteDoc(doc(db, "roomIntegrations", roomId));
       if (roomToDelete?.images?.length) {
         for (const imageUrl of roomToDelete.images) {
           await deleteStorageFileByUrl(imageUrl);
@@ -418,6 +470,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       }
       alert("Apartamento eliminado.");
       onRefreshRooms();
+      void fetchRoomIntegrations();
     } catch (err: any) {
       console.error("Delete failed:", err);
       handleFirestoreError(err, OperationType.DELETE, `rooms/${roomId}`);
@@ -495,7 +548,19 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
   // Real stats computation
   const totalBlockedDays = rooms.reduce((acc, r) => acc + (r.blockedDates ? r.blockedDates.length : 0), 0);
-  const roomsWithICal = rooms.filter((r) => r.airbnb_ical_url || r.booking_ical_url).length;
+  const roomsWithICal = rooms.filter((room) => {
+    const integration = roomIntegrations[room.id];
+    const legacyRoom = room as Room & {
+      airbnb_ical_url?: string;
+      booking_ical_url?: string;
+    };
+    return Boolean(
+      integration?.airbnbIcalUrl ||
+      integration?.bookingIcalUrl ||
+      legacyRoom.airbnb_ical_url ||
+      legacyRoom.booking_ical_url
+    );
+  }).length;
 
   return (
     <div className="w-full max-w-none py-5 space-y-6">
@@ -896,7 +961,17 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                         <span className="text-[9px] font-bold text-dark bg-warm-card px-2 py-0.5 rounded border border-warm-border uppercase font-mono text-[9px]">
                           Bloqueos: {room.blockedDates ? room.blockedDates.length : 0} d
                         </span>
-                        {(room.airbnb_ical_url || room.booking_ical_url) && (
+                        {(() => {
+                          const integration = roomIntegrations[room.id];
+                          const legacyRoom = room as Room & {
+                            airbnb_ical_url?: string;
+                            booking_ical_url?: string;
+                          };
+                          return integration?.airbnbIcalUrl ||
+                            integration?.bookingIcalUrl ||
+                            legacyRoom.airbnb_ical_url ||
+                            legacyRoom.booking_ical_url;
+                        })() && (
                           <span className="text-[9px] font-bold text-secondary bg-secondary/15 px-2 py-0.5 rounded uppercase font-mono">
                             iCal URL Sincronizada
                           </span>
@@ -1061,6 +1136,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                 {/* Calendars URLs iCal */}
                 <div className="bg-warm-card p-4 rounded-xl space-y-3 border border-warm-border">
                   <span className="text-[9px] text-secondary font-mono uppercase font-bold tracking-widest block">Integración iCal Opcional</span>
+                  <p className="text-[8px] text-dark-muted">
+                    Estas URLs se guardan en una colección privada solo visible para administradores y usadas por el backend al sincronizar disponibilidad.
+                  </p>
                   
                   <div>
                     <label htmlFor="airbnb-url" className="text-[8px] font-bold text-dark-muted block mb-1 uppercase tracking-wider">Airbnb iCal Feed URL</label>

@@ -21,6 +21,8 @@ La app ya no usa `firebase-applet-config.json` como respaldo. Toda la configurac
 
 Despliega `firestore.rules` y `storage.rules` en tu proyecto Firebase. Las reglas permiten reservas de usuarios anónimos temporales y exigen datos básicos del huésped: nombre, celular e identificación. El logo del hotel se sube desde el panel admin a Firebase Storage y su URL queda guardada en `settings/global`.
 
+Las URLs iCal externas de Airbnb y Booking ya no viven en `rooms`. Ahora se guardan en `roomIntegrations/{roomId}`, una colección privada visible solo para administradores y usada por el backend al sincronizar disponibilidad. El frontend público sigue leyendo únicamente `rooms` y sus `blockedDates`.
+
 Cuando un invitado temporal se registra con correo/contraseña o Google, la app consolida sus reservas en el usuario definitivo.
 
 ## Despliegue automatizado
@@ -51,6 +53,8 @@ Se agregaron tres workflows de GitHub Actions:
 - `FIRESTORE_DATABASE_ID`
 - `ADMIN_EMAIL`
 - `ENABLE_ICAL_SYNC_TIMER` (usar `"false"` en Cloud Run)
+- `CLOUD_SCHEDULER_OIDC_AUDIENCE` (URL exacta de `POST /api/sync-ical`)
+- `CLOUD_SCHEDULER_OIDC_EMAIL` (service account usada por Cloud Scheduler para el token OIDC)
 - `CORS_ALLOWED_ORIGINS` (opcional, lista separada por comas con los orígenes del frontend)
 
 #### Variables de build para Vite
@@ -78,3 +82,7 @@ Los workflows reutilizan algunos secretos compartidos para no duplicarlos en Git
 - El backend responde preflight CORS para rutas `/api/*`. Si defines `CORS_ALLOWED_ORIGINS`, solo esos orígenes quedan permitidos; si se deja vacía, la API responde con `Access-Control-Allow-Origin: *`.
 - En Cloud Run el servidor ahora usa `process.env.PORT`.
 - La sincronización iCal por `setInterval` queda desactivada por defecto en producción. En Cloud Run conviene invocar `POST /api/sync-ical` desde Cloud Scheduler.
+- `POST /api/sync-ical` acepta dos formas de autenticación:
+  - Bearer token Firebase de un administrador para el disparo manual desde la UI.
+  - Bearer token OIDC de Cloud Scheduler validado con `CLOUD_SCHEDULER_OIDC_AUDIENCE` y `CLOUD_SCHEDULER_OIDC_EMAIL`.
+- El endpoint `GET /api/rooms/:roomId/ical` sigue exportando la disponibilidad propia de Cardamomo para pegarla en Airbnb o Booking.

@@ -18,7 +18,7 @@
     },
     "Room": {
       "title": "Room",
-      "description": "Apartastudio details, capacity, prices, and external calendar settings",
+      "description": "Apartastudio details, capacity, prices, and blocked availability",
       "type": "object",
       "properties": {
         "id": { "type": "string", "description": "Document ID matching the room structure" },
@@ -27,11 +27,20 @@
         "capacity": { "type": "number", "description": "Maximum number of guests" },
         "pricePerNight": { "type": "number", "description": "Price per night in USD / COP" },
         "images": { "type": "array", "description": "List of URLs for photos of the room" },
-        "airbnb_ical_url": { "type": "string", "description": "Airbnb iCal URL to sync from" },
-        "booking_ical_url": { "type": "string", "description": "Booking.com iCal URL to sync from" },
         "blockedDates": { "type": "array", "description": "List of dates (YYYY-MM-DD) that are occupied/blocked" }
       },
       "required": ["id", "name", "pricePerNight", "capacity"]
+    },
+    "RoomIntegration": {
+      "title": "RoomIntegration",
+      "description": "Private per-room iCal sources used only by admins and backend sync jobs",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string", "description": "Associated room document ID" },
+        "airbnbIcalUrl": { "type": "string", "description": "Airbnb iCal URL to sync from" },
+        "bookingIcalUrl": { "type": "string", "description": "Booking.com iCal URL to sync from" }
+      },
+      "required": ["roomId", "airbnbIcalUrl", "bookingIcalUrl"]
     },
     "Booking": {
       "title": "Booking",
@@ -91,6 +100,10 @@
     "rooms/{roomId}": {
       "schema": "Room",
       "description": "Hotel accommodation options"
+    },
+    "roomIntegrations/{roomId}": {
+      "schema": "RoomIntegration",
+      "description": "Private iCal configuration for each accommodation"
     },
     "bookings/{bookingId}": {
       "schema": "Booking",
