@@ -13,6 +13,7 @@ import {
 } from "firebase/auth";
 import { auth, db } from "../lib/firebase";
 import { getApiUrl } from "../lib/api";
+import { omitUndefinedFields } from "../lib/firestoreData";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { X, Mail, Lock, User as UserIcon, AlertCircle } from "lucide-react";
 import { UserProfile } from "../types";
@@ -75,11 +76,22 @@ export default function LoginModal({ onClose, onSuccess }: LoginModalProps) {
       authProvider: resolveAuthProvider(user),
     };
 
-    await setDoc(userDocRef, {
+    const firestoreProfile = omitUndefinedFields({
       ...profile,
       updatedAt: serverTimestamp(),
       ...(existingProfile?.isTemporary ? { convertedAt: serverTimestamp() } : {}),
-    }, { merge: true });
+    });
+
+    console.info("[auth] Saving finalized user profile", {
+      uid: profile.uid,
+      email: profile.email,
+      role: profile.role,
+      authProvider: profile.authProvider,
+      hasPhone: typeof profile.phone === "string" && profile.phone.length > 0,
+      hasIdentification: typeof profile.identification === "string" && profile.identification.length > 0,
+    });
+
+    await setDoc(userDocRef, firestoreProfile, { merge: true });
 
     return profile;
   };
@@ -142,8 +154,17 @@ export default function LoginModal({ onClose, onSuccess }: LoginModalProps) {
       onSuccess(profile);
       onClose();
     } catch (err: any) {
-      console.error("Google Auth failed:", err);
-      setErrorMsg("Ocurrió un error al autenticarse con Google. Verifique el estado de Firebase.");
+      console.error("[auth] Google sign-in flow failed", {
+        code: err?.code || null,
+        message: err?.message || String(err),
+        currentUserUid: auth.currentUser?.uid || null,
+        currentUserEmail: auth.currentUser?.email || null,
+      });
+      setErrorMsg(
+        auth.currentUser
+          ? "Google inició sesión, pero no pudimos sincronizar tu perfil todavía."
+          : "Ocurrió un error al autenticarse con Google. Verifique el estado de Firebase."
+      );
     } finally {
       setLoading(false);
     }

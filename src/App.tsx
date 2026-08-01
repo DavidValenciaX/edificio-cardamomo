@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "./lib/firebase";
+import { omitUndefinedFields } from "./lib/firestoreData";
 import { UserProfile, Room, Settings } from "./types";
 import { DEFAULT_ROOMS, DEFAULT_SETTINGS } from "./data";
 import Navbar from "./components/Navbar";
@@ -66,17 +67,23 @@ export default function App() {
             : undefined;
           const profile = buildProfileFromAuthUser(user, existingProfile);
 
-          await setDoc(userDocRef, {
+          const firestoreProfile = omitUndefinedFields({
             ...profile,
             updatedAt: serverTimestamp(),
             ...(userDocSnap.exists() ? {} : { createdAt: serverTimestamp() }),
             ...(!user.isAnonymous && existingProfile?.isTemporary ? { convertedAt: serverTimestamp() } : {}),
-          }, { merge: true });
+          });
+
+          await setDoc(userDocRef, firestoreProfile, { merge: true });
 
           setUserProfile(profile);
           setCurrentRole(profile.role);
         } catch (authError) {
-          console.error("Profile sync failed. Using local auth status:", authError);
+          console.error("[auth] Profile sync failed. Using local auth status.", {
+            error: authError instanceof Error ? authError.message : String(authError),
+            uid: user.uid,
+            email: user.email || null,
+          });
           // Fallback
           const mockProfile = buildProfileFromAuthUser(user);
           setUserProfile(mockProfile);
@@ -104,10 +111,7 @@ export default function App() {
       });
 
       if (list.length === 0) {
-        console.log("Firestore 'rooms' collection empty. Auto-bootstrapping with defaults...");
-        for (const item of DEFAULT_ROOMS) {
-          await setDoc(doc(db, "rooms", item.id), item);
-        }
+        console.warn("[firestore] 'rooms' collection is empty. Using local defaults until rooms are created in Firestore.");
         list = [...DEFAULT_ROOMS];
       }
       setRooms(list);
@@ -118,7 +122,7 @@ export default function App() {
         const s = settingsSnap.data() as Settings;
         setSettingsLogo(s.hotelLogoUrl);
       } else {
-        await setDoc(doc(db, "settings", "global"), DEFAULT_SETTINGS);
+        console.warn("[firestore] 'settings/global' does not exist yet. Using default branding locally.");
         setSettingsLogo(DEFAULT_SETTINGS.hotelLogoUrl);
       }
 
