@@ -82,7 +82,8 @@ Los workflows reutilizan algunos secretos compartidos para no duplicarlos en Git
 - El backend responde preflight CORS para rutas `/api/*`. Si defines `CORS_ALLOWED_ORIGINS`, solo esos orígenes quedan permitidos; si se deja vacía, la API responde con `Access-Control-Allow-Origin: *`.
 - En Cloud Run el servidor ahora usa `process.env.PORT`.
 - La sincronización iCal por `setInterval` queda desactivada por defecto en producción. En Cloud Run conviene invocar `POST /api/sync-ical` desde Cloud Scheduler.
+- Si un feed iCal configurado responde con error o contenido inválido, ese apartamento conserva su última proyección válida de `blockedDates` y la sincronización responde con estado parcial para permitir reintentos.
 - `POST /api/sync-ical` acepta dos formas de autenticación:
   - Bearer token Firebase de un administrador para el disparo manual desde la UI.
   - Bearer token OIDC de Cloud Scheduler validado con `CLOUD_SCHEDULER_OIDC_AUDIENCE` y `CLOUD_SCHEDULER_OIDC_EMAIL`.
-- El endpoint `GET /api/rooms/:roomId/ical` sigue exportando la disponibilidad propia de Cardamomo para pegarla en Airbnb o Booking.
+- El endpoint `GET /api/rooms/:roomId/ical` exporta la proyección completa de fechas bloqueadas del apartamento, incluyendo reservas directas y fechas importadas desde Airbnb/Booking, para pegarla en ambas plataformas.

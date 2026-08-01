@@ -11,6 +11,7 @@ import {
 } from "firebase-admin";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
+import { buildICalContent, syncRoomAvailability } from "./src/lib/ical.ts";
 
 function readRequiredServerEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -305,37 +306,8 @@ app.post("/api/consolidate-temporary-user", async (req, res) => {
   }
 });
 
-// Helper to format ISO Date to YYYYMMDD for iCal
-function formatToICalDate(dateStr: string, isAllDay: boolean = true): string {
-  // input dateStr: YYYY-MM-DD
-  const dateStrClean = dateStr.replace(/-/g, '');
-  if (isAllDay) {
-    return `VALUE=DATE:${dateStrClean}`;
-  }
-  return dateStrClean + "T000000Z";
-}
-
-// Normalize createdAt into an iCal DTSTAMP string. Handles both ISO strings (legacy
-// frontend writes) and Firestore Timestamps (admin SDK / serverTimestamp writes).
-function toICalStamp(createdAt: unknown): string {
-  if (!createdAt) return "20260602T001614Z";
-  let date: Date;
-  if (createdAt instanceof Date) {
-    date = createdAt;
-  } else if (typeof createdAt === "string") {
-    date = new Date(createdAt);
-  } else if (createdAt && typeof createdAt === "object" && "toDate" in createdAt && typeof (createdAt as any).toDate === "function") {
-    date = (createdAt as any).toDate();
-  } else if (createdAt && typeof createdAt === "object" && "seconds" in createdAt) {
-    date = new Date((createdAt as any).seconds * 1000);
-  } else {
-    date = new Date();
-  }
-  return date.toISOString().replace(/[-:T]/g, "").slice(0, 15) + "Z";
-}
-
 // -------------------------------------------------------------
-// 1. ENDPOINT: Expose our own internal bookings as an iCal feed 
+// 1. ENDPOINT: Expose the complete blocked-date projection as an iCal feed
 // -------------------------------------------------------------
 app.get("/api/rooms/:roomId/ical", async (req, res) => {
   const { roomId } = req.params;
@@ -348,40 +320,10 @@ app.get("/api/rooms/:roomId/ical", async (req, res) => {
       return res.status(404).send("Room not found");
     }
     const roomData = roomSnap.data();
-
-    // Fetch confirmed bookings for this room
-    const bookingsSnap = await db
-      .collection("bookings")
-      .where("roomId", "==", roomId)
-      .where("status", "==", "confirmed")
-      .get();
-
-    let icalContent = "BEGIN:VCALENDAR\r\n";
-    icalContent += "VERSION:2.0\r\n";
-    icalContent += `PRODID:-//Edificio Cardamomo//Calendar Sync//ES\r\n`;
-    icalContent += "CALSCALE:GREGORIAN\r\n";
-    icalContent += `METHOD:PUBLISH\r\n`;
-    icalContent += `X-WR-CALNAME:Cardamomo - ${roomData?.name || "Apartastudio"}\r\n`;
-
-    bookingsSnap.forEach((bookingDoc) => {
-      const b = bookingDoc.data();
-      const checkInICal = formatToICalDate(b.checkIn);
-      // For iCal end dates, DTEND is exclusive. Airbnb/Booking expect DTEND to be the check-out day.
-      const checkOutICal = formatToICalDate(b.checkOut);
-      const stamp = toICalStamp(b.createdAt);
-
-      icalContent += "BEGIN:VEVENT\r\n";
-      icalContent += `UID:booking-${b.id || bookingDoc.id}@edificiocardamomo.com\r\n`;
-      icalContent += `DTSTAMP:${stamp}\r\n`;
-      icalContent += `DTSTART;${checkInICal}\r\n`;
-      icalContent += `DTEND;${checkOutICal}\r\n`;
-      icalContent += `SUMMARY:Reserva Edificio Cardamomo #${b.id ? b.id.substring(0, 6).toUpperCase() : 'APP'}\r\n`;
-      icalContent += "DESCRIPTION:Reserva realizada por la app de Edificio Cardamomo.\r\n";
-      icalContent += "STATUS:CONFIRMED\r\n";
-      icalContent += "END:VEVENT\r\n";
-    });
-
-    icalContent += "END:VCALENDAR\r\n";
+    const blockedDates = Array.isArray(roomData?.blockedDates)
+      ? roomData.blockedDates.filter((date: unknown): date is string => typeof date === "string")
+      : [];
+    const icalContent = buildICalContent(roomData?.name || "Apartastudio", blockedDates);
 
     res.set({
       "Content-Type": "text/calendar; charset=utf-8",
@@ -394,61 +336,6 @@ app.get("/api/rooms/:roomId/ical", async (req, res) => {
     return res.status(500).send("Error generating calendar.");
   }
 });
-
-// Helper: Custom native regex-based iCal Parser
-function parseICalContent(icalText: string): string[] {
-  const blockedDates: string[] = [];
-  const lines = icalText.split(/\r?\n|\\r?\\n/);
-  let currentEvent: { start?: string; end?: string } | null = null;
-
-  for (let line of lines) {
-    line = line.trim();
-    if (line.startsWith('BEGIN:VEVENT')) {
-      currentEvent = {};
-    } else if (line.startsWith('END:VEVENT')) {
-      if (currentEvent && currentEvent.start && currentEvent.end) {
-        // Parse date strings, typically '20260605' or 'VALUE=DATE:20260605' or with time '20260605T120000Z'
-        const rawStart = currentEvent.start.split(':').pop() || '';
-        const rawEnd = currentEvent.end.split(':').pop() || '';
-
-        const startStr = rawStart.substring(0, 8); 
-        const endStr = rawEnd.substring(0, 8); 
-
-        if (startStr.length === 8 && endStr.length === 8) {
-          const startYear = parseInt(startStr.substring(0, 4));
-          const startMonth = parseInt(startStr.substring(4, 6)) - 1;
-          const startDay = parseInt(startStr.substring(6, 8));
-
-          const endYear = parseInt(endStr.substring(0, 4));
-          const endMonth = parseInt(endStr.substring(4, 6)) - 1;
-          const endDay = parseInt(endStr.substring(6, 8));
-
-          const startDate = new Date(startYear, startMonth, startDay);
-          const endDate = new Date(endYear, endMonth, endDay);
-
-          // Generate all dates in between (check-in day included, check-out day excluded or included depending on standard)
-          // For Airbnb/Booking, check-out day is the arrival day of the next guest, so dates blocked is [start, end)
-          const current = new Date(startDate);
-          while (current < endDate) {
-            const year = current.getFullYear();
-            const month = String(current.getMonth() + 1).padStart(2, '0');
-            const day = String(current.getDate()).padStart(2, '0');
-            blockedDates.push(`${year}-${month}-${day}`);
-            current.setDate(current.getDate() + 1);
-          }
-        }
-      }
-      currentEvent = null;
-    } else if (currentEvent) {
-      if (line.startsWith('DTSTART')) {
-        currentEvent.start = line;
-      } else if (line.startsWith('DTEND')) {
-        currentEvent.end = line;
-      }
-    }
-  }
-  return [...new Set(blockedDates)];
-}
 
 // -------------------------------------------------------------------------
 // 2. ENDPOINT: Sync External iCal URLs into Firestore (The scheduled cron)
@@ -463,7 +350,6 @@ app.post("/api/sync-ical", authorizeIcalSyncRequest, async (req, res) => {
       const room = roomDoc.data();
       const roomId = roomDoc.id;
       const integration = await loadRoomIntegration(roomId, room);
-      let newBlockedDates: string[] = [];
 
       // We parse actual local app bookings to make sure they remain blocked
       const bookingsSnap = await db
@@ -472,62 +358,56 @@ app.post("/api/sync-ical", authorizeIcalSyncRequest, async (req, res) => {
         .where("status", "==", "confirmed")
         .get();
 
-      bookingsSnap.forEach((bookingDoc) => {
-        const b = bookingDoc.data();
-        const start = new Date(b.checkIn);
-        const end = new Date(b.checkOut);
-        const current = new Date(start);
-        while (current < end) {
-          const year = current.getFullYear();
-          const month = String(current.getMonth() + 1).padStart(2, '0');
-          const day = String(current.getDate()).padStart(2, '0');
-          newBlockedDates.push(`${year}-${month}-${day}`);
-          current.setDate(current.getDate() + 1);
-        }
+      const syncResult = await syncRoomAvailability({
+        roomId,
+        roomName: room.name || roomId,
+        existingBlockedDates: Array.isArray(room.blockedDates) ? room.blockedDates : [],
+        confirmedBookings: bookingsSnap.docs.map((bookingDoc) => {
+          const booking = bookingDoc.data();
+          return {
+            checkIn: booking.checkIn,
+            checkOut: booking.checkOut,
+          };
+        }),
+        airbnbIcalUrl: integration.airbnbIcalUrl,
+        bookingIcalUrl: integration.bookingIcalUrl,
       });
 
-      // Synchronize Airbnb source
-      if (integration.airbnbIcalUrl) {
-        try {
-          console.log(`Syncing from Airbnb for room {${room.name}}: ${integration.airbnbIcalUrl}`);
-          const response = await fetch(integration.airbnbIcalUrl);
-          if (response.ok) {
-            const icalText = await response.text();
-            const dates = parseICalContent(icalText);
-            newBlockedDates.push(...dates);
-          }
-        } catch (e: any) {
-          console.error(`Error fetching Airbnb iCal for ${room.name}:`, e.message);
-        }
+      if (!syncResult.shouldUpdate) {
+        console.error(`iCal sync skipped for ${room.name || roomId}:`, syncResult.errors);
+        results.push({
+          roomId,
+          roomName: room.name || roomId,
+          status: syncResult.status,
+          blockedDatesCount: syncResult.blockedDates.length,
+          hasAirbnbIcal: syncResult.hasAirbnbIcal,
+          hasBookingIcal: syncResult.hasBookingIcal,
+          errors: syncResult.errors,
+        });
+        continue;
       }
 
-      // Synchronize Booking.com source
-      if (integration.bookingIcalUrl) {
-        try {
-          console.log(`Syncing from Booking.com for room {${room.name}}: ${integration.bookingIcalUrl}`);
-          const response = await fetch(integration.bookingIcalUrl);
-          if (response.ok) {
-            const icalText = await response.text();
-            const dates = parseICalContent(icalText);
-            newBlockedDates.push(...dates);
-          }
-        } catch (e: any) {
-          console.error(`Error fetching Booking iCal for ${room.name}:`, e.message);
-        }
-      }
-
-      // Deduplicate result dates
-      const uniqueBlockedDates = [...new Set(newBlockedDates)].sort();
-
-      // Update in Firestore (admin SDK bypasses security rules)
-      await db.collection("rooms").doc(roomId).update({ blockedDates: uniqueBlockedDates });
+      // Update only after every configured external source succeeded.
+      await db.collection("rooms").doc(roomId).update({ blockedDates: syncResult.blockedDates });
 
       results.push({
         roomId,
-        roomName: room.name,
-        blockedDatesCount: uniqueBlockedDates.length,
-        hasAirbnbIcal: Boolean(integration.airbnbIcalUrl),
-        hasBookingIcal: Boolean(integration.bookingIcalUrl),
+        roomName: room.name || roomId,
+        status: syncResult.status,
+        blockedDatesCount: syncResult.blockedDates.length,
+        hasAirbnbIcal: syncResult.hasAirbnbIcal,
+        hasBookingIcal: syncResult.hasBookingIcal,
+        errors: [],
+      });
+    }
+
+    const failedRooms = results.filter((result) => result.status === "skipped");
+    if (failedRooms.length > 0) {
+      return res.status(502).json({
+        status: "partial",
+        error: "Algunos apartamentos conservaron su última disponibilidad válida porque un feed iCal falló.",
+        synced_rooms: results.filter((result) => result.status === "synced"),
+        failed_rooms: failedRooms,
       });
     }
 

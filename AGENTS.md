@@ -15,7 +15,7 @@ Edificio Cardamomo es una aplicación web de reservas para apartaestudios en Nei
 - Backend Firebase: Firebase Admin SDK con Application Default Credentials.
 - Integraciones: Google Auth Library para validar OIDC de Cloud Scheduler; `fetch` y un parser iCal propio para calendarios externos.
 - Despliegue: Firebase Hosting para el frontend, Cloud Run para el backend y GitHub Actions para despliegues y reglas.
-- No hay suite de tests automatizados ni script de `test` configurado actualmente.
+- Tests: Node `node:test` ejecutado con `tsx`; la cobertura actual está en `tests/ical.test.ts`.
 
 ## Estructura importante
 
@@ -73,6 +73,7 @@ Requisitos prácticos: Node.js 22 (coincide con GitHub Actions), npm y un proyec
 
 - `npm run dev`: ejecuta `server.ts` con `tsx` y Vite en middleware.
 - `npm run lint`: ejecuta `tsc --noEmit`; es la comprobación estática principal.
+- `npm run test`: ejecuta las pruebas de iCal con Node `node:test` y `tsx`.
 - `npm run build:hosting`: compila solo el frontend Vite en `dist`.
 - `npm run build:backend`: empaqueta `server.ts` en `dist/server.cjs` con esbuild.
 - `npm run build`: ejecuta ambos builds.
