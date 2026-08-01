@@ -8,7 +8,7 @@ import {
   updateDoc, 
   deleteDoc 
 } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { db, handleFirestoreError, OperationType, storage } from "../lib/firebase";
 import { getApiUrl, getPublicApiOrigin } from "../lib/api";
 import { firebaseConfig } from "../lib/firebaseConfig";
@@ -70,6 +70,8 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
   const [roomPrice, setRoomPrice] = useState(0);
   const [roomCapacity, setRoomCapacity] = useState(2);
   const [roomImages, setRoomImages] = useState<string[]>([]);
+  const [originalRoomImages, setOriginalRoomImages] = useState<string[]>([]);
+  const [pendingRoomImageDeletes, setPendingRoomImageDeletes] = useState<string[]>([]);
   const [airbnbUrl, setAirbnbUrl] = useState("");
   const [bookingUrl, setBookingUrl] = useState("");
   const [blockedDates, setBlockedDates] = useState<string[]>([]);
@@ -119,6 +121,25 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     return getDownloadURL(storageRef);
   };
 
+  const deleteStorageFileByUrl = async (fileUrl: string) => {
+    if (!fileUrl || fileUrl.startsWith("data:")) {
+      return;
+    }
+
+    if (!fileUrl.includes("firebasestorage.googleapis.com") && !fileUrl.startsWith("gs://")) {
+      return;
+    }
+
+    try {
+      await deleteObject(ref(storage, fileUrl));
+    } catch (error: any) {
+      if (error?.code === "storage/object-not-found") {
+        return;
+      }
+      throw error;
+    }
+  };
+
   const handleLogoUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -133,6 +154,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
     try {
       const downloadUrl = await uploadImageFile(file, "branding/logo");
+      const previousLogoUrl = settings.hotelLogoUrl;
       const nextSettings = {
         ...settings,
         hotelLogoUrl: downloadUrl,
@@ -144,6 +166,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       }, { merge: true });
 
       setSettings(nextSettings);
+      if (previousLogoUrl && previousLogoUrl !== downloadUrl) {
+        await deleteStorageFileByUrl(previousLogoUrl);
+      }
     } catch (error) {
       console.error("Logo upload failed:", error);
       setLogoUploadError(error instanceof Error ? error.message : "No se pudo subir el logo. Revisa Storage y sus reglas.");
@@ -167,6 +192,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
     try {
       const downloadUrl = await uploadImageFile(file, "branding/hero");
+      const previousHeroBannerUrl = settings.heroBannerUrl;
       await setDoc(doc(db, "settings", "global"), {
         hotelLogoUrl: settings.hotelLogoUrl || "",
         heroBannerUrl: downloadUrl,
@@ -176,6 +202,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
         ...settings,
         heroBannerUrl: downloadUrl,
       });
+      if (previousHeroBannerUrl && previousHeroBannerUrl !== downloadUrl) {
+        await deleteStorageFileByUrl(previousHeroBannerUrl);
+      }
     } catch (error) {
       console.error("Hero banner upload failed:", error);
       setHeroBannerUploadError(error instanceof Error ? error.message : "No se pudo subir la imagen principal.");
@@ -189,6 +218,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     if (!settings) return;
 
     try {
+      const previousLogoUrl = settings.hotelLogoUrl;
       await setDoc(doc(db, "settings", "global"), {
         hotelLogoUrl: "",
         heroBannerUrl: settings.heroBannerUrl || "",
@@ -199,6 +229,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
         hotelLogoUrl: "",
       });
       setLogoUploadError("");
+      if (previousLogoUrl) {
+        await deleteStorageFileByUrl(previousLogoUrl);
+      }
     } catch (error) {
       console.error("Logo removal failed:", error);
       setLogoUploadError("No se pudo quitar el logo actual.");
@@ -209,6 +242,7 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
     if (!settings) return;
 
     try {
+      const previousHeroBannerUrl = settings.heroBannerUrl;
       await setDoc(doc(db, "settings", "global"), {
         hotelLogoUrl: settings.hotelLogoUrl || "",
         heroBannerUrl: "",
@@ -219,6 +253,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
         heroBannerUrl: "",
       });
       setHeroBannerUploadError("");
+      if (previousHeroBannerUrl) {
+        await deleteStorageFileByUrl(previousHeroBannerUrl);
+      }
     } catch (error) {
       console.error("Hero banner removal failed:", error);
       setHeroBannerUploadError("No se pudo quitar la imagen principal.");
@@ -281,6 +318,9 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       setRoomPrice(room.pricePerNight);
       setRoomCapacity(room.capacity);
       setRoomImages([...room.images]);
+      setOriginalRoomImages([...room.images]);
+      setPendingRoomImageDeletes([]);
+      setRoomImagesUploadError("");
       setAirbnbUrl(room.airbnb_ical_url || "");
       setBookingUrl(room.booking_ical_url || "");
       setBlockedDates([...room.blockedDates]);
@@ -292,11 +332,41 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       setRoomPrice(170000);
       setRoomCapacity(2);
       setRoomImages([]);
+      setOriginalRoomImages([]);
+      setPendingRoomImageDeletes([]);
       setRoomImagesUploadError("");
       setAirbnbUrl("");
       setBookingUrl("");
       setBlockedDates([]);
     }
+  };
+
+  const handleCancelEditForm = async () => {
+    if (!editingRoom) {
+      setEditingRoom(null);
+      return;
+    }
+
+    if (!editingRoom.id) {
+      const unsavedUploads = [
+        ...new Set([
+          ...roomImages.filter((imageUrl) => !originalRoomImages.includes(imageUrl)),
+          ...pendingRoomImageDeletes,
+        ]),
+      ];
+      for (const imageUrl of unsavedUploads) {
+        try {
+          await deleteStorageFileByUrl(imageUrl);
+        } catch (error) {
+          console.error("Failed to delete unsaved room image from storage:", error);
+        }
+      }
+    }
+
+    setPendingRoomImageDeletes([]);
+    setOriginalRoomImages([]);
+    setRoomImagesUploadError("");
+    setEditingRoom(null);
   };
 
   const handleSaveRoom = async (e: FormEvent) => {
@@ -320,7 +390,12 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
 
     try {
       await setDoc(doc(db, "rooms", roomIdInput), roomPayload);
+      for (const imageUrl of pendingRoomImageDeletes) {
+        await deleteStorageFileByUrl(imageUrl);
+      }
       alert("Apartaestudio guardado con éxito.");
+      setPendingRoomImageDeletes([]);
+      setOriginalRoomImages([]);
       setEditingRoom(null);
       onRefreshRooms();
     } catch (err: any) {
@@ -334,7 +409,13 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
       return;
     }
     try {
+      const roomToDelete = rooms.find((room) => room.id === roomId);
       await deleteDoc(doc(db, "rooms", roomId));
+      if (roomToDelete?.images?.length) {
+        for (const imageUrl of roomToDelete.images) {
+          await deleteStorageFileByUrl(imageUrl);
+        }
+      }
       alert("Apartaestudio eliminado.");
       onRefreshRooms();
     } catch (err: any) {
@@ -371,7 +452,13 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
   };
 
   const handleRemoveImage = (idx: number) => {
+    const imageToRemove = roomImages[idx];
     setRoomImages(roomImages.filter((_, i) => i !== idx));
+    if (imageToRemove) {
+      setPendingRoomImageDeletes((currentDeletes) =>
+        currentDeletes.includes(imageToRemove) ? currentDeletes : [...currentDeletes, imageToRemove]
+      );
+    }
   };
 
   // Manual Blocker Scheduler Submit
@@ -849,7 +936,10 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
                   {editingRoom.id ? `Editar Apartaestudio: ${editingRoom.name}` : "Crear Nuevo Apartaestudio"}
                 </h4>
                 <button
-                  onClick={() => setEditingRoom(null)}
+                  type="button"
+                  onClick={() => {
+                    void handleCancelEditForm();
+                  }}
                   className="text-[10px] font-bold text-dark-muted hover:underline uppercase tracking-widest cursor-pointer"
                 >
                   Regresar al listado
