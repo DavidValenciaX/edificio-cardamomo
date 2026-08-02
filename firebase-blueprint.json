@@ -90,6 +90,18 @@
         }
       },
       "required": ["hotelLogoUrl", "heroBannerUrl", "notificationConfig"]
+    },
+    "PublicContent": {
+      "title": "PublicContent",
+      "description": "Public guest information, frequently asked questions, and curated nearby places",
+      "type": "object",
+      "properties": {
+        "intro": { "type": "string", "description": "Introductory text for the public guest information section" },
+        "policies": { "type": "object", "description": "General property policies and guest answers" },
+        "faqItems": { "type": "array", "description": "Expanded frequently asked questions" },
+        "nearbyPlaces": { "type": "array", "description": "Curated places near the property with map links" }
+      },
+      "required": ["intro", "policies", "faqItems", "nearbyPlaces"]
     }
   },
   "firestore": {
@@ -112,6 +124,10 @@
     "settings/global": {
       "schema": "Settings",
       "description": "Universal hotel configurations"
+    },
+    "publicContent/global": {
+      "schema": "PublicContent",
+      "description": "Public guest information, FAQ, and nearby places"
     }
   }
 }

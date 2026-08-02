@@ -113,6 +113,23 @@ service cloud.firestore {
         && data.notificationConfig.smsDestination is string && data.notificationConfig.smsDestination.size() <= 100;
     }
 
+    function isValidPublicContent(data) {
+      return data.intro is string && data.intro.size() <= 500
+        && data.policies is map
+        && data.policies.parking is string && data.policies.parking.size() <= 2000
+        && data.policies.breakfast is string && data.policies.breakfast.size() <= 2000
+        && data.policies.checkIn is string && data.policies.checkIn.size() <= 2000
+        && data.policies.checkOut is string && data.policies.checkOut.size() <= 2000
+        && data.policies.earlyArrival is string && data.policies.earlyArrival.size() <= 2000
+        && data.policies.lateDeparture is string && data.policies.lateDeparture.size() <= 2000
+        && data.policies.partialStayDiscount is string && data.policies.partialStayDiscount.size() <= 2000
+        && data.policies.reception is string && data.policies.reception.size() <= 2000
+        && data.policies.selfCheckIn is string && data.policies.selfCheckIn.size() <= 2000
+        && data.policies.electronicInvoice is string && data.policies.electronicInvoice.size() <= 2000
+        && data.faqItems is list && data.faqItems.size() <= 20
+        && data.nearbyPlaces is list && data.nearbyPlaces.size() <= 30;
+    }
+
     // MATCHES
     
     // USERS
@@ -169,6 +186,14 @@ service cloud.firestore {
         || isAdmin()
       );
       allow delete: if isAdmin();
+    }
+
+    // PUBLIC GUEST CONTENT
+    match /publicContent/{docId} {
+      allow get: if docId == 'global';
+      allow list: if isAdmin();
+      allow create, update: if docId == 'global' && isAdmin() && isValidPublicContent(request.resource.data);
+      allow delete: if docId == 'global' && isAdmin();
     }
 
     // SETTINGS

@@ -13,7 +13,8 @@ import { auth, db, handleFirestoreError, OperationType, storage } from "../lib/f
 import { getApiUrl, getPublicApiOrigin } from "../lib/api";
 import { firebaseConfig } from "../lib/firebaseConfig";
 import { DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
-import { Room, RoomIntegration, Settings } from "../types";
+import { PublicContent, Room, RoomIntegration, Settings } from "../types";
+import PublicContentEditor from "./PublicContentEditor";
 import { 
   Plus, Edit2, Trash2, Bell, RefreshCw, Save, CheckCircle
 } from "lucide-react";
@@ -21,6 +22,8 @@ import {
 interface AdminPanelProps {
   rooms: Room[];
   onRefreshRooms: () => void;
+  publicContent: PublicContent;
+  onPublicContentChange: (content: PublicContent) => void;
 }
 
 function buildEmptySettings(): Settings {
@@ -58,7 +61,7 @@ function buildEmptyRoomIntegration(roomId: string = ""): RoomIntegration {
   };
 }
 
-export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
+export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPublicContentChange }: AdminPanelProps) {
   // Global Hotel Settings
   const [settings, setSettings] = useState<Settings | null>(null);
   const [roomIntegrations, setRoomIntegrations] = useState<Record<string, RoomIntegration>>({});
@@ -920,6 +923,12 @@ export default function AdminPanel({ rooms, onRefreshRooms }: AdminPanelProps) {
               <p className="text-xs text-red-500">Error al inicializar configuraciones.</p>
             )}
           </section>
+
+          {/* 5. Public Guest Information */}
+          <PublicContentEditor
+            content={publicContent}
+            onSaved={onPublicContentChange}
+          />
         </div>
 
         {/* Right Hand: Accommodation CRUD Manager & Form panels (Spans 7 of 12 columns) */}

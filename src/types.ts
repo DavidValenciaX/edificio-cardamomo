@@ -31,6 +31,42 @@ export interface RoomIntegration {
   bookingIcalUrl: string;
 }
 
+export interface PublicPolicies {
+  parking: string;
+  breakfast: string;
+  checkIn: string;
+  checkOut: string;
+  earlyArrival: string;
+  lateDeparture: string;
+  partialStayDiscount: string;
+  reception: string;
+  selfCheckIn: string;
+  electronicInvoice: string;
+}
+
+export interface FaqItem {
+  id: string;
+  question: string;
+  answer: string;
+}
+
+export interface NearbyPlace {
+  id: string;
+  category: string;
+  name: string;
+  description: string;
+  address: string;
+  distance: string;
+  mapUrl: string;
+}
+
+export interface PublicContent {
+  intro: string;
+  policies: PublicPolicies;
+  faqItems: FaqItem[];
+  nearbyPlaces: NearbyPlace[];
+}
+
 import type { Timestamp } from 'firebase/firestore';
 
 export interface Booking {

@@ -3,8 +3,8 @@ import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "./lib/firebase";
 import { omitUndefinedFields } from "./lib/firestoreData";
-import { UserProfile, Room, Settings } from "./types";
-import { DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER } from "./data";
+import { UserProfile, Room, Settings, PublicContent } from "./types";
+import { buildDefaultPublicContent, DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, normalizePublicContent } from "./data";
 import Navbar from "./components/Navbar";
 import LoginModal from "./components/LoginModal";
 import LandingPage from "./components/LandingPage";
@@ -50,6 +50,7 @@ export default function App() {
   const [loadingRooms, setLoadingRooms] = useState(true);
   const [settingsLogo, setSettingsLogo] = useState("");
   const [heroBannerUrl, setHeroBannerUrl] = useState("");
+  const [publicContent, setPublicContent] = useState<PublicContent>(() => buildDefaultPublicContent());
   
   // Navigation & Dialog toggles
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -131,7 +132,17 @@ export default function App() {
       setSettingsLogo("");
       setHeroBannerUrl("");
     } finally {
-      setLoadingRooms(false);
+      try {
+        const publicContentSnap = await getDoc(doc(db, "publicContent", "global"));
+        setPublicContent(publicContentSnap.exists()
+          ? normalizePublicContent(publicContentSnap.data())
+          : buildDefaultPublicContent());
+      } catch (err) {
+        console.error("[firestore] Failed to fetch public content. Using defaults.", err);
+        setPublicContent(buildDefaultPublicContent());
+      } finally {
+        setLoadingRooms(false);
+      }
     }
   };
 
@@ -198,6 +209,8 @@ export default function App() {
               <AdminPanel
                 rooms={rooms}
                 onRefreshRooms={fetchRoomsAndSettings}
+                publicContent={publicContent}
+                onPublicContentChange={setPublicContent}
               />
             ) : selectedRoomId || userProfile ? (
               /* Interactive Guest Booking console */
@@ -226,6 +239,7 @@ export default function App() {
               <LandingPage
                 rooms={rooms}
                 heroImageUrl={heroBannerUrl || DEFAULT_HERO_PLACEHOLDER}
+                publicContent={publicContent}
                 onSelectRoom={(roomId) => {
                   setSelectedRoomId(roomId);
                 }}
