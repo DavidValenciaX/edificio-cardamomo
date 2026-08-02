@@ -125,106 +125,7 @@ export default function LandingPage({ rooms, heroImageUrl, publicContent, onSele
         )}
       </section>
 
-      {/* 3. Información importante */}
-      <section id="informacion" className="bg-warm-card border-y border-warm-border py-10 px-4 md:px-6 scroll-mt-14 rounded-2xl my-6">
-        <div className="max-w-3xl mx-auto text-center mb-6">
-          <h2 className="font-display font-bold text-xl md:text-2xl text-dark">Información importante</h2>
-          <p className="text-[10px] md:text-xs text-dark-muted font-serif mt-2 leading-relaxed">{publicContent.intro}</p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
-          {policyCards.map((card) => {
-            const PolicyIcon = card.icon;
-            return (
-              <article key={card.key} className="flex gap-3 items-start bg-white p-4 rounded-xl border border-warm-border/50 shadow-sm">
-                <PolicyIcon className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-                <div>
-                  <h3 className="font-semibold text-xs text-dark leading-tight">{card.title}</h3>
-                  <p className="text-[10px] text-dark-muted mt-1.5 block leading-relaxed line-clamp-4">
-                    {publicContent.policies[card.key]}
-                  </p>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* 4. Preguntas frecuentes */}
-      {publicContent.faqItems.length > 0 && (
-        <section id="faq" className="py-8 px-4 scroll-mt-14">
-          <div className="mb-5">
-            <h2 className="font-display font-bold text-xl md:text-2xl text-dark leading-none">Preguntas frecuentes</h2>
-            <p className="text-[10px] md:text-xs text-dark-muted font-medium mt-2">Respuestas claras para preparar tu estadía en Cardamomo.</p>
-          </div>
-
-          <div className="space-y-2 max-w-4xl mx-auto">
-            {publicContent.faqItems.map((item) => (
-              <details key={item.id} className="group bg-white border border-warm-border rounded-xl shadow-sm overflow-hidden">
-                <summary className="cursor-pointer list-none flex items-center justify-between gap-4 p-4 text-xs md:text-sm font-semibold text-dark">
-                  <span>{item.question}</span>
-                  <ChevronRight className="w-4 h-4 text-secondary shrink-0 transition-transform group-open:rotate-90" />
-                </summary>
-                <p className="px-4 pb-4 text-[11px] md:text-xs text-dark-muted leading-relaxed max-w-3xl">{item.answer}</p>
-              </details>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* 5. Guía del sector */}
-      <section id="nearby" className="py-8 px-4 scroll-mt-14">
-        <div className="flex items-end justify-between gap-4 mb-5 border-b border-warm-border/60 pb-3">
-          <div>
-            <h2 className="font-display font-bold text-xl md:text-2xl text-dark leading-none">Guía del sector</h2>
-            <p className="text-[10px] md:text-xs text-dark-muted font-medium mt-2">Lugares útiles para comer, comprar, entrenar y movilizarte desde el edificio.</p>
-          </div>
-          <Compass className="w-7 h-7 text-secondary shrink-0" />
-        </div>
-
-        {publicContent.nearbyPlaces.length === 0 ? (
-          <div className="bg-white border border-dashed border-warm-border rounded-xl p-6 text-center text-xs text-dark-muted">
-            La guía del sector se actualizará próximamente.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {publicContent.nearbyPlaces.map((place) => {
-              const safeMapUrl = /^https?:\/\//i.test(place.mapUrl) ? place.mapUrl : "";
-              return (
-                <article key={place.id} className="bg-white border border-warm-border/70 rounded-xl p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <span className="text-[9px] text-secondary font-mono uppercase tracking-widest font-bold">{place.category}</span>
-                      <h3 className="font-display font-semibold text-base text-dark mt-1">{place.name}</h3>
-                    </div>
-                    <MapPin className="w-5 h-5 text-primary shrink-0" />
-                  </div>
-                  {place.description && <p className="text-[11px] text-dark-muted leading-relaxed mt-2">{place.description}</p>}
-                  {(place.address || place.distance) && (
-                    <div className="mt-3 space-y-1 text-[10px] text-dark-muted">
-                      {place.address && <p><span className="font-bold text-dark">Referencia:</span> {place.address}</p>}
-                      {place.distance && <p><span className="font-bold text-dark">Distancia:</span> {place.distance}</p>}
-                    </div>
-                  )}
-                  {safeMapUrl && (
-                    <a
-                      href={safeMapUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 mt-3 text-[10px] font-bold text-secondary hover:text-primary transition-colors"
-                    >
-                      Ver en Google Maps
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  )}
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* 6. Comodidades del Edificio (Amenities) */}
+      {/* 3. Comodidades del Edificio (Amenities) */}
       <section id="amenities" className="bg-warm-card border-y border-warm-border py-10 px-6 scroll-mt-14 rounded-2xl my-6">
         <h2 className="font-display font-medium text-xl md:text-2xl text-dark mb-6 text-center">
           Servicios Premium Incluidos
@@ -259,6 +160,105 @@ export default function LandingPage({ rooms, heroImageUrl, publicContent, onSele
             </div>
           </div>
         </div>
+      </section>
+
+      {/* 4. Información importante */}
+      <section id="informacion" className="bg-warm-card border-y border-warm-border py-10 px-4 md:px-6 scroll-mt-14 rounded-2xl my-6">
+        <div className="max-w-3xl mx-auto text-center mb-6">
+          <h2 className="font-display font-bold text-xl md:text-2xl text-dark">Información importante</h2>
+          <p className="text-[10px] md:text-xs text-dark-muted font-serif mt-2 leading-relaxed">{publicContent.intro}</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
+          {policyCards.map((card) => {
+            const PolicyIcon = card.icon;
+            return (
+              <article key={card.key} className="flex gap-3 items-start bg-white p-4 rounded-xl border border-warm-border/50 shadow-sm">
+                <PolicyIcon className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+                <div>
+                  <h3 className="font-semibold text-xs text-dark leading-tight">{card.title}</h3>
+                  <p className="text-[10px] text-dark-muted mt-1.5 block leading-relaxed line-clamp-4">
+                    {publicContent.policies[card.key]}
+                  </p>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* 5. Preguntas frecuentes */}
+      {publicContent.faqItems.length > 0 && (
+        <section id="faq" className="py-8 px-4 scroll-mt-14">
+          <div className="mb-5">
+            <h2 className="font-display font-bold text-xl md:text-2xl text-dark leading-none">Preguntas frecuentes</h2>
+            <p className="text-[10px] md:text-xs text-dark-muted font-medium mt-2">Respuestas claras para preparar tu estadía en Cardamomo.</p>
+          </div>
+
+          <div className="space-y-2 max-w-4xl mx-auto">
+            {publicContent.faqItems.map((item) => (
+              <details key={item.id} className="group bg-white border border-warm-border rounded-xl shadow-sm overflow-hidden">
+                <summary className="cursor-pointer list-none flex items-center justify-between gap-4 p-4 text-xs md:text-sm font-semibold text-dark">
+                  <span>{item.question}</span>
+                  <ChevronRight className="w-4 h-4 text-secondary shrink-0 transition-transform group-open:rotate-90" />
+                </summary>
+                <p className="px-4 pb-4 text-[11px] md:text-xs text-dark-muted leading-relaxed max-w-3xl">{item.answer}</p>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 6. Guía del sector */}
+      <section id="nearby" className="py-8 px-4 scroll-mt-14">
+        <div className="flex items-end justify-between gap-4 mb-5 border-b border-warm-border/60 pb-3">
+          <div>
+            <h2 className="font-display font-bold text-xl md:text-2xl text-dark leading-none">Guía del sector</h2>
+            <p className="text-[10px] md:text-xs text-dark-muted font-medium mt-2">Lugares útiles para comer, comprar, entrenar y movilizarte desde el edificio.</p>
+          </div>
+          <Compass className="w-7 h-7 text-secondary shrink-0" />
+        </div>
+
+        {publicContent.nearbyPlaces.length === 0 ? (
+          <div className="bg-white border border-dashed border-warm-border rounded-xl p-6 text-center text-xs text-dark-muted">
+            La guía del sector se actualizará próximamente.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {publicContent.nearbyPlaces.map((place) => {
+              const safeMapUrl = /^https?:\/\//i.test(place.mapUrl) ? place.mapUrl : "";
+              return (
+                <article key={place.id} className="bg-white border border-warm-border/70 rounded-xl p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <span className="text-[9px] text-secondary font-mono uppercase tracking-widest font-bold">{place.category}</span>
+                      <h3 className="font-display font-semibold text-base text-dark mt-1">{place.name}</h3>
+                    </div>
+                    <MapPin className="w-5 h-5 text-primary shrink-0" />
+                  </div>
+                  {place.description && <p className="text-[11px] text-dark-muted leading-relaxed mt-2">{place.description}</p>}
+                  {(place.address || place.distance) && (
+                    <div className="mt-3 space-y-1 text-[10px] text-dark-muted">
+                      {place.address && <p><span className="font-bold text-dark">Ubicación:</span> {place.address}</p>}
+                      {place.distance && <p><span className="font-bold text-dark">Distancia:</span> {place.distance}</p>}
+                    </div>
+                  )}
+                  {safeMapUrl && (
+                    <a
+                      href={safeMapUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 mt-3 text-[10px] font-bold text-secondary hover:text-primary transition-colors"
+                    >
+                      Ver en Google Maps
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* 7. Ubicación y Contacto */}

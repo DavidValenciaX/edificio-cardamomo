@@ -310,7 +310,7 @@ export default function PublicContentEditor({ content, onSaved }: PublicContentE
                     <input
                       type="text"
                       maxLength={250}
-                      placeholder="Dirección o referencia"
+                      placeholder="Dirección o ubicación"
                       value={place.address}
                       onChange={(event) => updateNearbyPlace(place.id, "address", event.target.value)}
                       className="w-full bg-white border border-warm-border rounded p-2 text-[10px] text-dark focus:outline-none focus:border-secondary"
