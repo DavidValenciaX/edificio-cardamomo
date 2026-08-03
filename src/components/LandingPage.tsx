@@ -95,7 +95,7 @@ export default function LandingPage({
           </div>
 
           <div className="max-w-3xl">
-            <p className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-accent">Apartaestudios amoblados</p>
+            <p className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-accent">Apartamentos amoblados</p>
             <h1 id="hero-title" className="max-w-2xl font-display text-5xl font-semibold leading-[0.95] tracking-[-0.04em] text-warm-bg md:text-7xl">
               El lugar para vivir Neiva a tu ritmo.
             </h1>
@@ -352,7 +352,7 @@ export default function LandingPage({
               <div className="rounded-2xl border border-warm-bg/15 bg-warm-bg/10 p-5">
                 <Phone className="h-5 w-5 text-accent" />
                 <span className="mt-4 block text-xs font-bold uppercase tracking-[0.16em] text-warm-bg/60">Reservas directas</span>
-                <a href="tel:+573188198842" className="mt-2 block text-base font-semibold leading-7 text-warm-bg transition-colors hover:text-accent">+57 318 819 88 42</a>
+                <a href="tel:+573053229035" className="mt-2 block text-base font-semibold leading-7 text-warm-bg transition-colors hover:text-accent">+57 318 819 88 42</a>
               </div>
               <div className="rounded-2xl border border-warm-bg/15 bg-warm-bg/10 p-5">
                 <ExternalLink className="h-5 w-5 text-accent" />

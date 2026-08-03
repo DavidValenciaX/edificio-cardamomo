@@ -88,7 +88,7 @@ export default function Navbar({
         </a>
 
         {currentRole !== "admin" && (
-          <div className="hidden items-center gap-1 xl:flex" role="list">
+          <div className="hidden flex-1 items-center justify-center gap-1 xl:flex" role="list">
             {navItems.map((item) => {
               const isActive = activeSection === item.id;
               return (

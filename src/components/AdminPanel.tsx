@@ -85,7 +85,7 @@ const adminSections: Array<{
   { id: "overview", label: "Resumen", description: "Estado operativo", icon: LayoutDashboard },
   { id: "rooms", label: "Apartamentos", description: "Inventario y fichas", icon: Home },
   { id: "availability", label: "Disponibilidad", description: "Bloqueos e iCal", icon: CalendarDays },
-  { id: "content", label: "Contenido público", description: "FAQ y guía local", icon: FileText },
+  { id: "content", label: "Contenido público", description: "Información, FAQ y guía local", icon: FileText },
   { id: "branding", label: "Marca y alertas", description: "Imagen y notificaciones", icon: Palette },
 ];
 

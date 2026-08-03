@@ -1,6 +1,6 @@
 # Edificio Cardamomo
 
-Aplicación de reservas para apartaestudios con Firebase Auth, Firestore, sincronización iCal y notificaciones simuladas al host.
+Aplicación de reservas para apartamentos con Firebase Auth, Firestore, sincronización iCal y notificaciones simuladas al host.
 
 ## Configuración Local
 

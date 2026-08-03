@@ -2,7 +2,7 @@
 
 ## Propósito del proyecto
 
-Edificio Cardamomo es una aplicación web de reservas para apartaestudios en Neiva, Huila. Permite consultar apartamentos, seleccionar fechas, crear reservas como huésped anónimo o usuario registrado, administrar inventario y disponibilidad, cargar imágenes de marca y sincronizar bloqueos desde calendarios iCal de Airbnb y Booking.com.
+Edificio Cardamomo es una aplicación web de reservas para apartamentos en Neiva, Huila. Permite consultar apartamentos, seleccionar fechas, crear reservas como huésped anónimo o usuario registrado, administrar inventario y disponibilidad, cargar imágenes de marca y sincronizar bloqueos desde calendarios iCal de Airbnb y Booking.com.
 
 ## Stack y arquitectura
 
