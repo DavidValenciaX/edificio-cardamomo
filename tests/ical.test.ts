@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {test} from "node:test";
 import {
   buildICalContent,
+  datesForRange,
   parseICalContent,
   syncRoomAvailability,
 } from "../src/lib/ical.ts";
@@ -23,6 +24,22 @@ const airbnbFeed = [
   "END:VEVENT",
   "END:VCALENDAR",
 ].join("\r\n");
+
+test("datesForRange preserves calendar dates for reservation nights", () => {
+  assert.deepEqual(datesForRange("2026-08-05", "2026-08-07"), [
+    "2026-08-05",
+    "2026-08-06",
+  ]);
+  assert.deepEqual(datesForRange("2026-08-18", "2026-08-21"), [
+    "2026-08-18",
+    "2026-08-19",
+    "2026-08-20",
+  ]);
+  assert.deepEqual(datesForRange("2026-09-27", "2026-09-29"), [
+    "2026-09-27",
+    "2026-09-28",
+  ]);
+});
 
 test("parseICalContent extracts inclusive start and exclusive end dates", () => {
   assert.deepEqual(parseICalContent(airbnbFeed), [

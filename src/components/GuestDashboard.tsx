@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { getApiUrl } from "../lib/api";
+import { datesForRange } from "../lib/ical";
 import { DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 import { Room, Booking, UserProfile, GuestContact } from "../types";
 import { Calendar as CalendarIcon, Check, Users, DollarSign, ArrowRight, ShieldCheck, Info, X } from "lucide-react";
@@ -25,6 +26,10 @@ interface GuestDashboardProps {
   onSelectRoomId: (roomId: string | null) => void;
   onRefreshRooms: () => void;
   onTemporaryProfileReady?: (profile: UserProfile) => void;
+}
+
+function formatDateOnly(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 export default function GuestDashboard({
@@ -42,6 +47,7 @@ export default function GuestDashboard({
   const [currentDate] = useState(() => new Date());
   const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth());
   const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
+  const todayDateString = formatDateOnly(currentDate);
 
   // Booking details
   const [checkIn, setCheckIn] = useState<string | null>(null); // YYYY-MM-DD
@@ -164,11 +170,8 @@ export default function GuestDashboard({
   // Calendar Day Clicks
   const handleDayClick = (dateStr: string) => {
     setBookingError("");
-    const clickedDate = new Date(dateStr);
-    const today = new Date(currentDate);
-    today.setHours(0, 0, 0, 0);
 
-    if (clickedDate < today) {
+    if (dateStr < todayDateString) {
       setBookingError("No puede reservar en el pasado.");
       return;
     }
@@ -183,27 +186,13 @@ export default function GuestDashboard({
       setCheckOut(null);
     } else {
       // CheckIn exists, set CheckOut
-      const checkInDate = new Date(checkIn);
-      if (clickedDate <= checkInDate) {
+      if (dateStr <= checkIn) {
         // Recurrent click: update checkIn
         setCheckIn(dateStr);
       } else {
         // Enforce that NO blocked dates exist in between
-        let searchDate = new Date(checkInDate);
-        let hasBlocked = false;
-
-        while (searchDate < clickedDate) {
-          const year = searchDate.getFullYear();
-          const month = String(searchDate.getMonth() + 1).padStart(2, '0');
-          const day = String(searchDate.getDate()).padStart(2, '0');
-          const testString = `${year}-${month}-${day}`;
-
-          if (activeRoom.blockedDates.includes(testString)) {
-            hasBlocked = true;
-            break;
-          }
-          searchDate.setDate(searchDate.getDate() + 1);
-        }
+        const hasBlocked = datesForRange(checkIn, dateStr)
+          .some(date => activeRoom.blockedDates.includes(date));
 
         if (hasBlocked) {
           setBookingError("La selección contiene fechas bloqueadas en medio de la reserva.");
@@ -219,10 +208,7 @@ export default function GuestDashboard({
   let totalPriceEstimation = 0;
 
   if (checkIn && checkOut) {
-    const start = new Date(checkIn);
-    const end = new Date(checkOut);
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    nightsCount = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    nightsCount = datesForRange(checkIn, checkOut).length;
     totalPriceEstimation = nightsCount * activeRoom.pricePerNight;
   }
 
@@ -323,17 +309,7 @@ export default function GuestDashboard({
       await setDoc(bookingDocRef, newBooking);
 
       // 2. Compute date days array to block inside rooms collection
-      const datesToBlock: string[] = [];
-      const start = new Date(checkIn);
-      const end = new Date(checkOut);
-      const curr = new Date(start);
-      while (curr < end) {
-        const year = curr.getFullYear();
-        const month = String(curr.getMonth() + 1).padStart(2, '0');
-        const day = String(curr.getDate()).padStart(2, '0');
-        datesToBlock.push(`${year}-${month}-${day}`);
-        curr.setDate(curr.getDate() + 1);
-      }
+      const datesToBlock = datesForRange(checkIn, checkOut);
 
       // 3. Atomically join blockedDates inside Room doc
       const roomDocRef = doc(db, "rooms", activeRoom.id);
@@ -404,17 +380,7 @@ export default function GuestDashboard({
         const roomData = roomSnap.data() as Room;
 
         // Generate date block to remove
-        const datesToRemove: string[] = [];
-        const start = new Date(b.checkIn);
-        const end = new Date(b.checkOut);
-        const curr = new Date(start);
-        while (curr < end) {
-          const year = curr.getFullYear();
-          const month = String(curr.getMonth() + 1).padStart(2, '0');
-          const day = String(curr.getDate()).padStart(2, '0');
-          datesToRemove.push(`${year}-${month}-${day}`);
-          curr.setDate(curr.getDate() + 1);
-        }
+        const datesToRemove = datesForRange(b.checkIn, b.checkOut);
 
         const filteredBlocked = roomData.blockedDates.filter(d => !datesToRemove.includes(d));
         await updateDoc(roomDocRef, { blockedDates: filteredBlocked });
@@ -435,10 +401,7 @@ export default function GuestDashboard({
 
   const isBetweenDate = (dateStr: string) => {
     if (!checkIn || !checkOut || !dateStr) return false;
-    const curr = new Date(dateStr);
-    const start = new Date(checkIn);
-    const end = new Date(checkOut);
-    return curr > start && curr < end;
+    return dateStr > checkIn && dateStr < checkOut;
   };
 
   return (
@@ -563,9 +526,7 @@ export default function GuestDashboard({
             const isBlocked = day.dateStr && activeRoom.blockedDates.includes(day.dateStr);
             const isSelected = day.dateStr && isSelectedDate(day.dateStr);
             const isBetween = day.dateStr && isBetweenDate(day.dateStr);
-            const currentDay = new Date(currentDate);
-            currentDay.setHours(0, 0, 0, 0);
-            const isPast = day.dateStr && new Date(day.dateStr) < currentDay;
+            const isPast = day.dateStr && day.dateStr < todayDateString;
 
             return (
               <button
@@ -593,7 +554,7 @@ export default function GuestDashboard({
                 {isBlocked && day.isCurrentMonth && (
                   <span className="w-1 h-1 bg-red-400 rounded-full absolute bottom-1"></span>
                 )}
-                {day.dateStr === currentDate.toISOString().slice(0, 10) && (
+                {day.dateStr === todayDateString && (
                   <span className="w-1 h-1 bg-secondary rounded-full absolute top-1"></span>
                 )}
               </button>
