@@ -179,6 +179,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-warm-bg flex flex-col antialiased">
+      <a
+        href="#main-content"
+        className="sr-only z-[60] rounded-full bg-secondary px-4 py-3 text-sm font-bold text-warm-bg focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+      >
+        Saltar al contenido principal
+      </a>
       
       {/* Universal Sticky Header Navbar */}
       <Navbar
@@ -191,13 +197,13 @@ export default function App() {
       />
 
       {/* Primary Workspace Scroll Layer */}
-      <main className="flex-1 w-full max-w-md md:max-w-4xl lg:max-w-7xl mx-auto bg-warm-bg overflow-y-auto pb-16 px-4 md:px-8">
+      <main id="main-content" tabIndex={-1} className="flex-1 w-full max-w-md md:max-w-4xl lg:max-w-7xl mx-auto bg-warm-bg overflow-y-auto pb-16 px-4 md:px-8">
         
         {loadingRooms ? (
           <div className="flex flex-col items-center justify-center py-24 text-center space-y-3">
             <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
             <span className="text-xs font-semibold text-dark font-mono uppercase tracking-wider">
-              Conectando con Cardamomo DB...
+              Conectando con Cardamomo DB…
             </span>
           </div>
         ) : (

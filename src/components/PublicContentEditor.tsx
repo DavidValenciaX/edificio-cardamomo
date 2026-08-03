@@ -126,19 +126,20 @@ export default function PublicContentEditor({ content, onSaved }: PublicContentE
   };
 
   return (
-    <section className="bg-white border border-warm-border rounded-xl p-4 shadow-sm space-y-4">
+    <section className="space-y-8 rounded-3xl border border-warm-border bg-white p-5 shadow-sm md:p-8">
       <div>
-        <h3 className="font-display font-bold text-xs uppercase tracking-wider text-dark leading-none">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Contenido de la experiencia</p>
+        <h3 className="mt-2 font-display text-3xl font-semibold tracking-[-0.03em] text-dark">
           Información pública y preguntas frecuentes
         </h3>
-        <p className="text-[9px] text-dark-muted font-medium mt-1">
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-dark-muted">
           Este contenido aparece en la página pública. Las respuestas se guardan separadas de la configuración interna.
         </p>
       </div>
 
-      <form onSubmit={handleSave} className="space-y-5 text-xs font-medium">
+      <form onSubmit={handleSave} className="space-y-8 text-sm font-medium">
         <div>
-          <label htmlFor="public-content-intro" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1">
+          <label htmlFor="public-content-intro" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">
             Introducción
           </label>
           <textarea
@@ -148,19 +149,19 @@ export default function PublicContentEditor({ content, onSaved }: PublicContentE
             maxLength={500}
             value={draft.intro}
             onChange={(event) => setDraft((current) => ({ ...current, intro: event.target.value }))}
-            className="w-full bg-warm-card border border-warm-border rounded-lg p-2 text-[10px] text-dark leading-relaxed focus:outline-none focus:border-secondary"
+            className="w-full rounded-xl border border-warm-border bg-warm-card px-4 py-3 text-sm leading-6 text-dark"
           />
         </div>
 
         <div className="space-y-3">
           <div>
-            <span className="text-[9px] text-secondary font-mono uppercase font-bold tracking-widest">Información importante</span>
-            <p className="text-[8px] text-dark-muted mt-1">Edita aquí las políticas generales del edificio.</p>
+            <span className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Información importante</span>
+            <p className="mt-2 text-sm text-dark-muted">Edita aquí las políticas generales del edificio.</p>
           </div>
           <div className="space-y-3">
             {policyFields.map(({ key, label }) => (
               <div key={key}>
-                <label htmlFor={`public-policy-${key}`} className="text-[8px] font-bold text-dark-muted uppercase block mb-1">
+                <label htmlFor={`public-policy-${key}`} className="mb-2 block text-xs font-bold uppercase tracking-[0.1em] text-dark-muted">
                   {label}
                 </label>
                 <textarea
@@ -170,7 +171,7 @@ export default function PublicContentEditor({ content, onSaved }: PublicContentE
                   maxLength={2000}
                   value={draft.policies[key]}
                   onChange={(event) => updatePolicy(key, event.target.value)}
-                  className="w-full bg-white border border-warm-border rounded-lg p-2 text-[10px] text-dark leading-relaxed focus:outline-none focus:border-secondary"
+                  className="w-full rounded-xl border border-warm-border bg-white px-4 py-3 text-sm leading-6 text-dark"
                 />
               </div>
             ))}
@@ -222,7 +223,7 @@ export default function PublicContentEditor({ content, onSaved }: PublicContentE
                     placeholder="Ej: ¿Puedo llegar antes del horario establecido?"
                     value={item.question}
                     onChange={(event) => updateFaqItem(item.id, "question", event.target.value)}
-                    className="w-full bg-white border border-warm-border rounded p-2 text-[10px] text-dark focus:outline-none focus:border-secondary"
+                    className="w-full rounded-xl border border-warm-border bg-white p-3 text-sm text-dark"
                   />
                   <textarea
                     required
@@ -231,7 +232,7 @@ export default function PublicContentEditor({ content, onSaved }: PublicContentE
                     placeholder="Escribe una respuesta clara para los huéspedes."
                     value={item.answer}
                     onChange={(event) => updateFaqItem(item.id, "answer", event.target.value)}
-                    className="w-full bg-white border border-warm-border rounded p-2 text-[10px] text-dark leading-relaxed focus:outline-none focus:border-secondary"
+                    className="w-full rounded-xl border border-warm-border bg-white p-3 text-sm leading-6 text-dark"
                   />
                 </div>
               ))}
@@ -286,7 +287,7 @@ export default function PublicContentEditor({ content, onSaved }: PublicContentE
                       placeholder="Categoría"
                       value={place.category}
                       onChange={(event) => updateNearbyPlace(place.id, "category", event.target.value)}
-                      className="w-full bg-white border border-warm-border rounded p-2 text-[10px] text-dark focus:outline-none focus:border-secondary"
+                    className="w-full rounded-xl border border-warm-border bg-white p-3 text-sm text-dark"
                     />
                     <input
                       type="text"
@@ -295,7 +296,7 @@ export default function PublicContentEditor({ content, onSaved }: PublicContentE
                       placeholder="Nombre del lugar"
                       value={place.name}
                       onChange={(event) => updateNearbyPlace(place.id, "name", event.target.value)}
-                      className="w-full bg-white border border-warm-border rounded p-2 text-[10px] text-dark focus:outline-none focus:border-secondary"
+                    className="w-full rounded-xl border border-warm-border bg-white p-3 text-sm text-dark"
                     />
                   </div>
                   <textarea
@@ -304,7 +305,7 @@ export default function PublicContentEditor({ content, onSaved }: PublicContentE
                     placeholder="Descripción breve"
                     value={place.description}
                     onChange={(event) => updateNearbyPlace(place.id, "description", event.target.value)}
-                    className="w-full bg-white border border-warm-border rounded p-2 text-[10px] text-dark leading-relaxed focus:outline-none focus:border-secondary"
+                    className="w-full rounded-xl border border-warm-border bg-white p-3 text-sm leading-6 text-dark"
                   />
                   <div className="grid grid-cols-2 gap-2">
                     <input
@@ -313,7 +314,7 @@ export default function PublicContentEditor({ content, onSaved }: PublicContentE
                       placeholder="Dirección o ubicación"
                       value={place.address}
                       onChange={(event) => updateNearbyPlace(place.id, "address", event.target.value)}
-                      className="w-full bg-white border border-warm-border rounded p-2 text-[10px] text-dark focus:outline-none focus:border-secondary"
+                    className="w-full rounded-xl border border-warm-border bg-white p-3 text-sm text-dark"
                     />
                     <input
                       type="text"
@@ -321,16 +322,16 @@ export default function PublicContentEditor({ content, onSaved }: PublicContentE
                       placeholder="Distancia o tiempo aproximado"
                       value={place.distance}
                       onChange={(event) => updateNearbyPlace(place.id, "distance", event.target.value)}
-                      className="w-full bg-white border border-warm-border rounded p-2 text-[10px] text-dark focus:outline-none focus:border-secondary"
+                    className="w-full rounded-xl border border-warm-border bg-white p-3 text-sm text-dark"
                     />
                   </div>
                   <input
                     type="url"
                     maxLength={1000}
-                    placeholder="https://www.google.com/maps/..."
+                      placeholder="https://www.google.com/maps/…"
                     value={place.mapUrl}
                     onChange={(event) => updateNearbyPlace(place.id, "mapUrl", event.target.value)}
-                    className="w-full bg-white border border-warm-border rounded p-2 text-[10px] text-dark font-mono focus:outline-none focus:border-secondary"
+                    className="min-h-11 w-full rounded-xl border border-warm-border bg-white p-3 font-mono text-sm text-dark"
                   />
                 </div>
               ))}
@@ -347,10 +348,10 @@ export default function PublicContentEditor({ content, onSaved }: PublicContentE
         <button
           type="submit"
           disabled={saving}
-          className="w-full bg-primary hover:bg-primary-hover disabled:opacity-60 text-warm-bg py-2.5 rounded-lg font-bold flex items-center justify-center gap-1 transition-all font-sans"
+          className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-primary py-3 font-bold text-warm-bg transition-colors hover:bg-primary-hover disabled:opacity-60"
         >
           <Save className="w-4 h-4" />
-          <span>{saving ? "Guardando..." : "Guardar información pública"}</span>
+          <span>{saving ? "Guardando…" : "Guardar información pública"}</span>
         </button>
       </form>
     </section>

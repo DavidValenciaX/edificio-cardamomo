@@ -11,12 +11,25 @@ import {
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { auth, db, handleFirestoreError, OperationType, storage } from "../lib/firebase";
 import { getApiUrl, getPublicApiOrigin } from "../lib/api";
-import { firebaseConfig } from "../lib/firebaseConfig";
 import { DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 import { PublicContent, Room, RoomIntegration, Settings } from "../types";
 import PublicContentEditor from "./PublicContentEditor";
-import { 
-  Plus, Edit2, Trash2, Bell, RefreshCw, Save, CheckCircle
+import {
+  Bell,
+  CalendarDays,
+  CheckCircle,
+  ChevronRight,
+  Edit2,
+  FileText,
+  Home,
+  LayoutDashboard,
+  Palette,
+  Plus,
+  RefreshCw,
+  Save,
+  Settings2,
+  Trash2,
+  type LucideIcon,
 } from "lucide-react";
 
 interface AdminPanelProps {
@@ -61,7 +74,24 @@ function buildEmptyRoomIntegration(roomId: string = ""): RoomIntegration {
   };
 }
 
+type AdminSectionId = "overview" | "rooms" | "availability" | "content" | "branding";
+
+const adminSections: Array<{
+  id: AdminSectionId;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}> = [
+  { id: "overview", label: "Resumen", description: "Estado operativo", icon: LayoutDashboard },
+  { id: "rooms", label: "Apartamentos", description: "Inventario y fichas", icon: Home },
+  { id: "availability", label: "Disponibilidad", description: "Bloqueos e iCal", icon: CalendarDays },
+  { id: "content", label: "Contenido público", description: "FAQ y guía local", icon: FileText },
+  { id: "branding", label: "Marca y alertas", description: "Imagen y notificaciones", icon: Palette },
+];
+
 export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPublicContentChange }: AdminPanelProps) {
+  const [activeSection, setActiveSection] = useState<AdminSectionId>("overview");
+
   // Global Hotel Settings
   const [settings, setSettings] = useState<Settings | null>(null);
   const [roomIntegrations, setRoomIntegrations] = useState<Record<string, RoomIntegration>>({});
@@ -350,6 +380,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
 
   // Add/Edit Apartment Form Triggers
   const openEditForm = (room: Room | null) => {
+    setActiveSection("rooms");
     if (room) {
       const integration = roomIntegrations[room.id];
       const legacyRoom = room as Room & {
@@ -413,6 +444,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
     setOriginalRoomImages([]);
     setRoomImagesUploadError("");
     setEditingRoom(null);
+    setActiveSection("rooms");
   };
 
   const handleSaveRoom = async (e: FormEvent) => {
@@ -566,642 +598,408 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
     );
   }).length;
 
+  const activeSectionMeta = adminSections.find((section) => section.id === activeSection) || adminSections[0];
+
   return (
-    <div className="w-full max-w-none py-5 space-y-6">
-      
-      {/* Editorial Dashboard Top Header */}
-      <div className="border-b-2 border-secondary pb-3.5 flex items-end justify-between">
+    <div className="mx-auto w-full max-w-[1440px] py-6 lg:py-10">
+      <header className="flex flex-col gap-6 border-b border-warm-border pb-6 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="font-display font-medium text-2xl text-dark leading-none">
-            Edificio Cardamomo
-          </h1>
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.22em] text-secondary">Administración · Edificio Cardamomo</p>
+          <h1 className="font-display text-4xl font-semibold tracking-[-0.04em] text-dark md:text-5xl">Panel de administración</h1>
         </div>
-        <div className="text-right text-[8px] text-secondary font-mono leading-tight">
-          <span className="font-bold block">PROJECT: {firebaseConfig.projectId}</span>
-          <span className="block opacity-95">DB: {firebaseConfig.firestoreDatabaseId}</span>
-        </div>
-      </div>
+      </header>
 
-      {/* Operational Stats Grid */}
-      <div className="grid grid-cols-3 gap-2.5">
-        <div className="bg-accent/15 p-3 rounded border-l-[3px] border-accent shadow-sm">
-          <span className="text-[8px] text-secondary font-mono tracking-wider block font-bold leading-none mb-1.5 uppercase">
-            APARTAMENTOS
-          </span>
-          <span className="text-xl font-display font-bold text-dark leading-none">
-            {rooms.length}
-          </span>
-        </div>
-        <div className="bg-accent/15 p-3 rounded border-l-[3px] border-accent shadow-sm">
-          <span className="text-[8px] text-secondary font-mono tracking-wider block font-bold leading-none mb-1.5 uppercase">
-            DÍAS BLOQUEO
-          </span>
-          <span className="text-xl font-display font-bold text-dark leading-none">
-            {totalBlockedDays} d
-          </span>
-        </div>
-        <div className="bg-accent/15 p-3 rounded border-l-[3px] border-accent shadow-sm">
-          <span className="text-[8px] text-secondary font-mono tracking-wider block font-bold leading-none mb-1.5 uppercase">
-            CON ICAL
-          </span>
-          <span className="text-xl font-display font-bold text-dark leading-none">
-            {roomsWithICal}
-          </span>
-        </div>
-      </div>
-
-      {/* 2-Column Responsive Dashboard Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
-        {/* Left Hand: Controls & Global Configuration Panel (Spans 5 of 12 columns) */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* 1. Sincronización Interactiva iCal */}
-          <section className="bg-white border border-warm-border rounded-xl p-4 shadow-sm space-y-3.5">
-            <div className="flex justify-between items-center">
-              <div>
-                <h3 className="font-display font-bold text-xs uppercase tracking-wider text-dark leading-none">Canal iCal Booking/Airbnb</h3>
-              </div>
-              <button
-                onClick={triggerManualICalSync}
-                disabled={syncLoading}
-                className="flex items-center gap-1 bg-secondary hover:bg-secondary-hover text-warm-bg text-[10px] font-bold py-1.5 px-3 rounded-lg shadow disabled:opacity-40"
-              >
-                <RefreshCw className={`w-3 h-3 ${syncLoading ? "animate-spin" : ""}`} />
-                <span>Sincronizar</span>
-              </button>
-            </div>
-
-            {syncFeedback && (
-              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-2.5 rounded-lg text-[10px] font-semibold flex items-start gap-1.5">
-                <CheckCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                <span>{syncFeedback}</span>
-              </div>
-            )}
-          </section>
-
-          {/* 3. Manual Calendar Blocker scheduler */}
-          <section className="bg-white border border-warm-border rounded-xl p-4 shadow-sm space-y-3">
-            <h3 className="font-display font-bold text-xs uppercase tracking-wider text-dark leading-none">Gestor de Disponibilidad Manual (Bloqueos)</h3>
-            <p className="text-[9px] text-dark-muted font-medium">Bloquea por mantenimiento o libera fechas cliqueando en la fecha deseada</p>
-            
-            <form onSubmit={handleAddManualBlock} className="text-xs grid grid-cols-1 gap-2.5">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label htmlFor="blocker-room-id" className="text-[8px] font-bold text-dark uppercase block mb-1">Apartamento</label>
-                  <select
-                    id="blocker-room-id"
-                    value={blockerRoomId}
-                    onChange={(e) => setBlockerRoomId(e.target.value)}
-                    disabled={rooms.length === 0}
-                    className="w-full bg-warm-card border border-warm-border rounded-lg p-2 text-[11px] font-semibold text-dark"
+      <div className="mt-8 grid gap-8 lg:grid-cols-[15rem_minmax(0,1fr)]">
+        <aside className="self-start lg:sticky lg:top-28" aria-label="Secciones administrativas">
+          <div className="rounded-3xl border border-warm-border bg-white p-2 shadow-[0_12px_32px_rgba(64,48,29,0.06)]">
+            <p className="px-3 pb-2 pt-3 text-[11px] font-bold uppercase tracking-[0.18em] text-dark-muted">Workspace</p>
+            <nav className="flex gap-2 overflow-x-auto lg:flex-col" role="tablist" aria-label="Navegación del panel">
+              {adminSections.map((section) => {
+                const SectionIcon = section.icon;
+                const isActive = activeSection === section.id;
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setActiveSection(section.id)}
+                    className={`group flex min-w-[10rem] items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors lg:min-w-0 ${
+                      isActive ? "bg-secondary text-warm-bg shadow-sm" : "text-dark-muted hover:bg-warm-card hover:text-dark"
+                    }`}
                   >
-                    {rooms.length === 0 && <option value="">Sin apartamentos</option>}
-                    {rooms.map(r => (
-                      <option key={r.id} value={r.id}>{r.name}</option>
-                    ))}
-                  </select>
-                </div>
+                    <SectionIcon className={`h-5 w-5 shrink-0 ${isActive ? "text-accent" : "text-secondary"}`} />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-bold">{section.label}</span>
+                      <span className={`mt-0.5 block truncate text-xs ${isActive ? "text-warm-bg/70" : "text-dark-muted"}`}>{section.description}</span>
+                    </span>
+                    <ChevronRight className={`ml-auto hidden h-4 w-4 shrink-0 lg:block ${isActive ? "text-accent" : "opacity-0 group-hover:opacity-100"}`} />
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
 
-                <div>
-                  <label htmlFor="manual-block-date" className="text-[8px] font-bold text-dark uppercase block mb-1">Fecha (YYYY-MM-DD)</label>
-                  <input
-                    id="manual-block-date"
-                    type="date"
-                    required
-                    value={manualBlockDate}
-                    onChange={(e) => setManualBlockDate(e.target.value)}
-                    disabled={rooms.length === 0}
-                    className="w-full bg-warm-card border border-warm-border rounded-lg p-1.5 text-[11px] text-dark font-mono font-bold"
-                  />
+        </aside>
+
+        <main className="min-w-0" aria-labelledby="admin-section-title">
+          <div className="mb-6 flex flex-col gap-4 border-b border-warm-border pb-5 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-secondary">Sección activa</p>
+              <h2 id="admin-section-title" className="font-display text-3xl font-semibold tracking-[-0.03em] text-dark">{activeSectionMeta.label}</h2>
+              <p className="mt-2 text-sm leading-6 text-dark-muted">{activeSectionMeta.description}. Los cambios se guardan directamente en Firestore.</p>
+            </div>
+            {activeSection === "rooms" && editingRoom === null && (
+              <button
+                type="button"
+                onClick={() => openEditForm(null)}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-primary px-5 text-sm font-bold text-warm-bg shadow-sm transition-colors hover:bg-primary-hover"
+              >
+                <Plus className="h-4 w-4" />
+                Nuevo apartamento
+              </button>
+            )}
+          </div>
+
+          {activeSection === "overview" && (
+            <div className="space-y-6">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="rounded-3xl border border-warm-border bg-white p-5 shadow-sm">
+                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-dark-muted">Apartamentos</span>
+                  <span className="mt-4 block font-display text-4xl font-semibold text-dark">{rooms.length}</span>
+                  <span className="mt-1 block text-sm text-dark-muted">espacios publicados</span>
+                </div>
+                <div className="rounded-3xl border border-warm-border bg-white p-5 shadow-sm">
+                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-dark-muted">Días bloqueados</span>
+                  <span className="mt-4 block font-display text-4xl font-semibold text-dark">{totalBlockedDays}</span>
+                  <span className="mt-1 block text-sm text-dark-muted">en el inventario actual</span>
+                </div>
+                <div className="rounded-3xl border border-warm-border bg-white p-5 shadow-sm">
+                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-dark-muted">Con iCal</span>
+                  <span className="mt-4 block font-display text-4xl font-semibold text-dark">{roomsWithICal}</span>
+                  <span className="mt-1 block text-sm text-dark-muted">apartamentos conectados</span>
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={rooms.length === 0}
-                className="w-full bg-secondary hover:bg-secondary-hover text-warm-bg py-2 rounded-lg font-bold font-mono text-[10px]"
-              >
-                Bloquear / Liberar Fecha
-              </button>
-            </form>
-          </section>
-
-          {/* 4. Global Settings & Notification Rules */}
-          <section className="bg-white border border-warm-border rounded-xl p-4 shadow-sm space-y-4">
-            <div>
-              <h3 className="font-display font-bold text-xs uppercase tracking-wider text-dark leading-none">Configuraciones de la Compañía</h3>
-              <p className="text-[9px] text-dark-muted font-medium mt-1">Configure alertas salientes, logotipo e imagen principal del hotel</p>
-            </div>
-
-            {loadingSettings ? (
-              <p className="text-xs text-dark-muted font-mono">Cargando preferencias...</p>
-            ) : settings ? (
-              <form onSubmit={handleSaveNotificationConfig} className="space-y-4 text-xs font-medium">
-                
-                {/* Logo Settings */}
-                <div>
-                  <label className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1">Logotipo del Hotel</label>
-                  <div className="mt-2 flex items-center gap-3">
-                    <img
-                      src={settings.hotelLogoUrl || DEFAULT_LOGO_PLACEHOLDER}
-                      alt="Vista previa del logo"
-                      className="w-10 h-10 rounded-full object-cover border border-warm-border"
-                    />
-                    <span className="text-[8px] text-dark-muted block">El logo se sube a Firebase Storage. Si no hay logo, la app muestra un placeholder neutro.</span>
+              <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+                <section className="rounded-3xl border border-warm-border bg-white p-6 shadow-sm">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Accesos frecuentes</p>
+                      <h3 className="mt-2 font-display text-2xl font-semibold text-dark">¿Qué necesitas hacer?</h3>
+                    </div>
+                    <Settings2 className="h-6 w-6 text-secondary/60" />
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <label className="inline-flex items-center justify-center gap-2 bg-secondary hover:bg-secondary-hover text-warm-bg py-2 px-3 rounded-lg text-[10px] font-bold cursor-pointer">
-                      <span>{uploadingLogo ? "Subiendo..." : "Subir Logo"}</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        disabled={uploadingLogo}
-                        onChange={handleLogoUpload}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleRemoveLogo}
-                      disabled={uploadingLogo || !settings.hotelLogoUrl}
-                      className="py-2 px-3 rounded-lg text-[10px] font-bold border border-warm-border bg-white text-dark disabled:opacity-50"
-                    >
-                      Quitar Logo
+                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                    <button type="button" onClick={() => setActiveSection("rooms")} className="flex min-h-16 items-center gap-3 rounded-2xl border border-warm-border bg-warm-card/60 px-4 text-left transition-colors hover:border-secondary/40 hover:bg-warm-card">
+                      <Home className="h-5 w-5 text-primary" />
+                      <span><span className="block text-sm font-bold text-dark">Gestionar apartamentos</span><span className="mt-1 block text-xs text-dark-muted">Editar fichas y fotos</span></span>
+                    </button>
+                    <button type="button" onClick={() => setActiveSection("availability")} className="flex min-h-16 items-center gap-3 rounded-2xl border border-warm-border bg-warm-card/60 px-4 text-left transition-colors hover:border-secondary/40 hover:bg-warm-card">
+                      <CalendarDays className="h-5 w-5 text-primary" />
+                      <span><span className="block text-sm font-bold text-dark">Revisar disponibilidad</span><span className="mt-1 block text-xs text-dark-muted">Bloqueos e integraciones</span></span>
+                    </button>
+                    <button type="button" onClick={() => setActiveSection("content")} className="flex min-h-16 items-center gap-3 rounded-2xl border border-warm-border bg-warm-card/60 px-4 text-left transition-colors hover:border-secondary/40 hover:bg-warm-card">
+                      <FileText className="h-5 w-5 text-primary" />
+                      <span><span className="block text-sm font-bold text-dark">Actualizar contenido</span><span className="mt-1 block text-xs text-dark-muted">FAQ y guía del sector</span></span>
+                    </button>
+                    <button type="button" onClick={() => setActiveSection("branding")} className="flex min-h-16 items-center gap-3 rounded-2xl border border-warm-border bg-warm-card/60 px-4 text-left transition-colors hover:border-secondary/40 hover:bg-warm-card">
+                      <Palette className="h-5 w-5 text-primary" />
+                      <span><span className="block text-sm font-bold text-dark">Cuidar la marca</span><span className="mt-1 block text-xs text-dark-muted">Logo, hero y alertas</span></span>
                     </button>
                   </div>
-                  {logoUploadError && (
-                    <p className="mt-2 text-[10px] font-semibold text-red-600">{logoUploadError}</p>
-                  )}
-                </div>
+                </section>
 
-                <div className="h-px bg-warm-border"></div>
-
-                <div>
-                  <label className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1">Imagen Hero / Banner</label>
-                  <div className="mt-2 space-y-3">
-                    <img
-                      src={settings.heroBannerUrl || DEFAULT_HERO_PLACEHOLDER}
-                      alt="Vista previa del banner principal"
-                      className="w-full h-32 rounded-xl object-cover border border-warm-border bg-warm-card"
-                    />
-                    <p className="text-[8px] text-dark-muted">
-                      Esta imagen se muestra en el encabezado principal de la landing pública.
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <label className="inline-flex items-center justify-center gap-2 bg-secondary hover:bg-secondary-hover text-warm-bg py-2 px-3 rounded-lg text-[10px] font-bold cursor-pointer">
-                        <span>{uploadingHeroBanner ? "Subiendo..." : "Subir Banner"}</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          disabled={uploadingHeroBanner}
-                          onChange={handleHeroBannerUpload}
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleRemoveHeroBanner}
-                        disabled={uploadingHeroBanner || !settings.heroBannerUrl}
-                        className="py-2 px-3 rounded-lg text-[10px] font-bold border border-warm-border bg-white text-dark disabled:opacity-50"
-                      >
-                        Quitar Banner
-                      </button>
-                    </div>
-                    {heroBannerUploadError && (
-                      <p className="text-[10px] font-semibold text-red-600">{heroBannerUploadError}</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="h-px bg-warm-border"></div>
-
-                {/* Notification alert channels */}
-                <div className="space-y-3.5">
-                  <span className="text-[9px] text-dark uppercase font-bold tracking-wider flex items-center gap-1.5">
-                    <Bell className="w-3.5 h-3.5 text-secondary" /> Configuración de Alertas al Host
-                  </span>
-
-                  {/* Email Alert Channel */}
-                  <div className="p-3 bg-warm-card rounded-lg border border-warm-border space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <input 
-                          type="checkbox"
-                          id="email-enabled"
-                          checked={settings.notificationConfig.emailEnabled}
-                          onChange={(e) => setSettings({
-                            ...settings,
-                            notificationConfig: {
-                              ...settings.notificationConfig,
-                              emailEnabled: e.target.checked
-                            }
-                          })}
-                          className="w-4 h-4 text-primary rounded"
-                        />
-                        <label htmlFor="email-enabled" className="font-bold text-dark text-xs">Canal Correo Electrónico</label>
-                      </div>
-                      <span className="text-[8px] font-mono uppercase bg-blue-50 border border-blue-200 text-blue-800 px-1.5 py-0.5 rounded">Resend / SendGrid</span>
-                    </div>
-
-                    {settings.notificationConfig.emailEnabled && (
-                      <div>
-                        <label htmlFor="email-destination" className="text-[8px] font-bold text-dark-muted uppercase block mb-0.5">Destinatario Alerts Email</label>
-                        <input 
-                          id="email-destination"
-                          type="email" 
-                          required
-                          value={settings.notificationConfig.emailDestination}
-                          onChange={(e) => setSettings({
-                            ...settings,
-                            notificationConfig: {
-                              ...settings.notificationConfig,
-                              emailDestination: e.target.value
-                            }
-                          })}
-                          className="w-full bg-white border border-warm-border rounded px-2.5 py-1.5 text-[10px] text-dark"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* WhatsApp Alert Channel */}
-                  <div className="p-3 bg-warm-card rounded-lg border border-warm-border space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <input 
-                          type="checkbox"
-                          id="whatsapp-enabled"
-                          checked={settings.notificationConfig.whatsappEnabled}
-                          onChange={(e) => setSettings({
-                            ...settings,
-                            notificationConfig: {
-                              ...settings.notificationConfig,
-                              whatsappEnabled: e.target.checked
-                            }
-                          })}
-                          className="w-4 h-4 text-primary rounded"
-                        />
-                        <label htmlFor="whatsapp-enabled" className="font-bold text-dark text-xs">Canal WhatsApp API</label>
-                      </div>
-                      <span className="text-[8px] font-mono uppercase bg-green-50 border border-green-200 text-green-800 px-1.5 py-0.5 rounded font-bold">Cloud API Meta</span>
-                    </div>
-
-                    {settings.notificationConfig.whatsappEnabled && (
-                      <div>
-                        <label htmlFor="whatsapp-destination" className="text-[8px] font-bold text-dark-muted uppercase block mb-0.5">Celular Destinatario (WhatsApp)</label>
-                        <input 
-                          id="whatsapp-destination"
-                          type="text" 
-                          required
-                          value={settings.notificationConfig.whatsappDestination}
-                          onChange={(e) => setSettings({
-                            ...settings,
-                            notificationConfig: {
-                              ...settings.notificationConfig,
-                              whatsappDestination: e.target.value
-                            }
-                          })}
-                          className="w-full bg-white border border-warm-border rounded px-2.5 py-1.5 text-[10px] text-dark font-mono font-bold"
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Push / SMS Alert Channel */}
-                  <div className="p-3 bg-warm-card rounded-lg border border-warm-border space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <input 
-                          type="checkbox"
-                          id="sms-enabled"
-                          checked={settings.notificationConfig.smsEnabled}
-                          onChange={(e) => setSettings({
-                            ...settings,
-                            notificationConfig: {
-                              ...settings.notificationConfig,
-                              smsEnabled: e.target.checked
-                            }
-                          })}
-                          className="w-4 h-4 text-primary rounded"
-                        />
-                        <label htmlFor="sms-enabled" className="font-bold text-dark text-xs">Canal SMS o Celular Push</label>
-                      </div>
-                      <span className="text-[8px] font-mono uppercase bg-amber-50 border border-amber-200 text-amber-800 px-1.5 py-0.5 rounded">Twilio / FCM</span>
-                    </div>
-
-                    {settings.notificationConfig.smsEnabled && (
-                      <div>
-                        <label htmlFor="sms-destination" className="text-[8px] font-bold text-dark-muted uppercase block mb-0.5">Celular de Alerta SMS</label>
-                        <input 
-                          id="sms-destination"
-                          type="text" 
-                          required
-                          value={settings.notificationConfig.smsDestination}
-                          onChange={(e) => setSettings({
-                            ...settings,
-                            notificationConfig: {
-                              ...settings.notificationConfig,
-                              smsDestination: e.target.value
-                            }
-                          })}
-                          className="w-full bg-white border border-warm-border rounded px-2.5 py-1.5 text-[10px] text-dark font-mono font-bold"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full bg-primary hover:bg-primary-hover text-warm-bg py-2.5 rounded-lg font-bold flex items-center justify-center gap-1 transition-all font-sans"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Guardar Configuración</span>
-                </button>
-              </form>
-            ) : (
-              <p className="text-xs text-red-500">Error al inicializar configuraciones.</p>
-            )}
-          </section>
-
-          {/* 5. Public Guest Information */}
-          <PublicContentEditor
-            content={publicContent}
-            onSaved={onPublicContentChange}
-          />
-        </div>
-
-        {/* Right Hand: Accommodation CRUD Manager & Form panels (Spans 7 of 12 columns) */}
-        <div className="lg:col-span-7 space-y-6">
-          {/* 2. Room CRUD Manager Section */}
-          {editingRoom === null ? (
-            <section className="space-y-3.5">
-              <div className="flex justify-between items-center border-b border-warm-border/60 pb-2">
-                <h3 className="font-display font-bold text-base text-dark">Gestor de Apartamentos ({rooms.length})</h3>
-                <button
-                  onClick={() => openEditForm(null)}
-                  className="flex items-center gap-1.5 bg-primary hover:bg-primary-hover text-warm-bg text-[10px] font-bold py-2 px-3 rounded-lg shadow animate-pulse hover:animate-none"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Nuevo Apartamento</span>
-                </button>
-              </div>
-
-              <div className="space-y-3.5">
-                {rooms.length === 0 ? (
-                  <div className="bg-white border border-dashed border-warm-border rounded-xl p-6 text-center text-sm text-dark-muted">
-                    Aún no hay apartamentos configurados. Crea el primero desde el botón <strong>Nuevo Apartamento</strong>.
-                  </div>
-                ) : rooms.map((room) => (
-                  <div key={room.id} className="bg-white border border-warm-border rounded-xl p-3.5 flex gap-4 items-center relative shadow-sm">
-                    <img
-                      src={room.images[0] || DEFAULT_ROOM_IMAGE_PLACEHOLDER}
-                      alt={room.name}
-                      referrerPolicy="no-referrer"
-                      className="w-20 h-20 rounded-lg object-cover border border-warm-border shrink-0 animate-fade-in"
-                    />
-                    
-                    <div className="min-w-0 flex-1">
-                      <h4 className="font-bold text-sm text-dark truncate pr-16">{room.name}</h4>
-                      <span className="text-[11px] text-primary font-mono font-bold block mt-0.5">
-                        ${room.pricePerNight.toLocaleString()} COP / Noche
-                      </span>
-                      
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        <span className="text-[9px] font-bold text-dark bg-warm-card px-2 py-0.5 rounded border border-warm-border uppercase font-mono text-[9px]">
-                          Bloqueos: {room.blockedDates ? room.blockedDates.length : 0} d
-                        </span>
-                        {(() => {
-                          const integration = roomIntegrations[room.id];
-                          const legacyRoom = room as Room & {
-                            airbnb_ical_url?: string;
-                            booking_ical_url?: string;
-                          };
-                          return integration?.airbnbIcalUrl ||
-                            integration?.bookingIcalUrl ||
-                            legacyRoom.airbnb_ical_url ||
-                            legacyRoom.booking_ical_url;
-                        })() && (
-                          <span className="text-[9px] font-bold text-secondary bg-secondary/15 px-2 py-0.5 rounded uppercase font-mono">
-                            iCal URL Sincronizada
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                      <button
-                        onClick={() => openEditForm(room)}
-                        className="p-2 text-secondary hover:bg-warm-card rounded border border-transparent hover:border-warm-border transition-colors cursor-pointer"
-                        title="Editar Apartamento"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteRoom(room.id)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded border border-transparent hover:border-red-100 transition-colors cursor-pointer"
-                        title="Eliminar Apartamento"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : (
-            /* Form View for Adding / Editing Apartment */
-            <section className="bg-white border border-warm-border rounded-xl p-5 shadow-sm space-y-4">
-              <div className="flex justify-between items-center border-b border-warm-border pb-3">
-                <h4 className="font-display font-semibold text-sm uppercase tracking-wider text-dark leading-none">
-                  {editingRoom.id ? `Editar Apartamento: ${editingRoom.name}` : "Crear Nuevo Apartamento"}
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleCancelEditForm();
-                  }}
-                  className="text-[10px] font-bold text-dark-muted hover:underline uppercase tracking-widest cursor-pointer"
-                >
-                  Regresar al listado
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveRoom} className="space-y-4 text-xs">
-                {/* Technical ID is generated by Firestore and remains immutable. */}
-                {editingRoom.id ? (
-                  <div>
-                    <label htmlFor="room-id-input" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">ID Técnico del Apartamento</label>
-                    <input
-                      id="room-id-input"
-                      type="text"
-                      readOnly
-                      value={roomIdInput}
-                      className="w-full bg-warm-card border border-warm-border rounded-lg py-2 px-3 text-dark-muted font-mono text-xs opacity-75 cursor-not-allowed"
-                    />
-                    <p className="text-[9px] text-dark-muted mt-1">Se genera automáticamente y no se puede modificar.</p>
-                  </div>
-                ) : (
-                  <p className="text-[9px] text-dark-muted">El ID técnico se generará automáticamente al crear el apartamento.</p>
-                )}
-
-                {/* Name */}
-                <div>
-                  <label htmlFor="room-name" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Nombre Comercial del Apartamento *</label>
-                  <input
-                    id="room-name"
-                    type="text"
-                    required
-                    placeholder="Ej: Apartamento Deluxe Exterior"
-                    value={roomName}
-                    onChange={(e) => setRoomName(e.target.value)}
-                    className="w-full bg-warm-card border border-warm-border rounded-lg py-2 px-3 text-dark font-medium focus:outline-none focus:border-secondary text-xs"
-                  />
-                </div>
-
-                {/* Description */}
-                <div>
-                  <label htmlFor="room-desc" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Descripción del Apartamento *</label>
-                  <textarea
-                    id="room-desc"
-                    required
-                    rows={4}
-                    placeholder="Describa acabados, servicios m2, tipo de cama, iluminación..."
-                    value={roomDesc}
-                    onChange={(e) => setRoomDesc(e.target.value)}
-                    className="w-full bg-warm-card border border-warm-border rounded-lg py-2 px-3 text-dark focus:outline-none focus:border-secondary font-medium leading-normal text-xs"
-                  />
-                </div>
-
-                {/* Price & Capacity Row */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="room-price" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Precio x Noche (COP) *</label>
-                    <input
-                      id="room-price"
-                      type="number"
-                      required
-                      min={1}
-                      value={roomPrice}
-                      onChange={(e) => setRoomPrice(Number(e.target.value))}
-                      className="w-full bg-warm-card border border-warm-border rounded-lg py-2 px-3 text-dark font-mono font-bold focus:outline-none focus:border-secondary text-xs"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="room-capacity" className="text-[9px] font-bold text-dark uppercase tracking-wider block mb-1.5">Capacidad Máxima (Adultos) *</label>
-                    <input
-                      id="room-capacity"
-                      type="number"
-                      required
-                      min={1}
-                      value={roomCapacity}
-                      onChange={(e) => setRoomCapacity(Number(e.target.value))}
-                      className="w-full bg-warm-card border border-warm-border rounded-lg py-2 px-3 text-dark font-mono font-bold focus:outline-none focus:border-secondary text-xs"
-                    />
-                  </div>
-                </div>
-
-                {/* Images Manager */}
-                <div className="space-y-2 pb-1">
-                  <label className="text-[9px] font-bold text-dark uppercase tracking-wider block leading-none">Fotos del Apartamento</label>
-                  <p className="text-[8px] text-dark-muted">
-                    Sube imágenes reales a Firebase Storage. Puedes cargar varias a la vez y el límite actual es de 10 fotos por apartamento.
-                  </p>
-                  <label className="inline-flex items-center justify-center gap-2 bg-secondary hover:bg-secondary-hover text-warm-bg py-2 px-3 rounded-lg text-[10px] font-bold cursor-pointer w-fit">
-                    <span>{uploadingRoomImages ? "Subiendo..." : "Subir Fotos"}</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      disabled={uploadingRoomImages}
-                      onChange={handleRoomImagesUpload}
-                    />
-                  </label>
-                  {roomImagesUploadError && (
-                    <p className="text-[10px] font-semibold text-red-600">{roomImagesUploadError}</p>
-                  )}
-
-                  {/* Photos List scroller */}
-                  <div className="flex gap-2.5 overflow-x-auto pt-1 py-1">
-                    {roomImages.length === 0 && (
-                      <div className="w-full rounded-lg border border-dashed border-warm-border bg-warm-card px-3 py-4 text-[10px] text-dark-muted text-center">
-                        Aún no has subido fotos para este apartamento.
-                      </div>
-                    )}
-                    {roomImages.map((img, idx) => (
-                      <div key={idx} className="relative w-14 h-14 rounded border border-warm-border overflow-hidden shrink-0">
-                        <img src={img} alt="Foto" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveImage(idx)}
-                          className="absolute top-0 right-0 bg-red-600 text-white w-4 h-4 text-[9px] flex items-center justify-center font-bold"
-                        >
-                          ×
-                        </button>
+                <section className="rounded-3xl bg-dark p-6 text-warm-bg shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-accent">Inventario visible</p>
+                  <h3 className="mt-2 font-display text-2xl font-semibold">Estado de tus espacios</h3>
+                  <div className="mt-6 space-y-3">
+                    {rooms.length === 0 ? (
+                      <p className="rounded-2xl border border-warm-bg/15 bg-warm-bg/10 p-4 text-sm leading-6 text-warm-bg/75">Todavía no hay apartamentos publicados.</p>
+                    ) : rooms.slice(0, 4).map((room) => (
+                      <div key={room.id} className="flex items-center justify-between gap-3 rounded-2xl border border-warm-bg/15 bg-warm-bg/10 px-4 py-3">
+                        <span className="min-w-0 truncate text-sm font-semibold">{room.name}</span>
+                        <span className="shrink-0 text-xs font-medium text-warm-bg/65">{room.blockedDates.length} bloqueos</span>
                       </div>
                     ))}
                   </div>
-                </div>
+                </section>
+              </div>
+            </div>
+          )}
 
-                {/* Calendars URLs iCal */}
-                <div className="bg-warm-card p-4 rounded-xl space-y-3 border border-warm-border">
-                  <span className="text-[9px] text-secondary font-mono uppercase font-bold tracking-widest block">Integración iCal Opcional</span>
-                  <p className="text-[8px] text-dark-muted">
-                    Estas URLs se guardan en una colección privada solo visible para administradores y usadas por el backend al sincronizar disponibilidad.
-                  </p>
-                  
+          {activeSection === "rooms" && (
+            editingRoom === null ? (
+              <section className="space-y-4" aria-labelledby="rooms-list-title">
+                <div className="flex items-end justify-between gap-4">
                   <div>
-                    <label htmlFor="airbnb-url" className="text-[8px] font-bold text-dark-muted block mb-1 uppercase tracking-wider">Airbnb iCal Feed URL</label>
-                    <input
-                      id="airbnb-url"
-                      type="url"
-                      placeholder="https://www.airbnb.com/calendar/ical/..."
-                      value={airbnbUrl}
-                      onChange={(e) => setAirbnbUrl(e.target.value)}
-                      className="w-full bg-white border border-warm-border rounded p-2 text-xs text-dark font-mono focus:outline-none focus:border-secondary"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="booking-url" className="text-[8px] font-bold text-dark-muted block mb-1 uppercase tracking-wider">Booking.com iCal Feed URL</label>
-                    <input
-                      id="booking-url"
-                      type="url"
-                      placeholder="https://ical.booking.com/v1/..."
-                      value={bookingUrl}
-                      onChange={(e) => setBookingUrl(e.target.value)}
-                      className="w-full bg-white border border-warm-border rounded p-2 text-xs text-dark font-mono focus:outline-none focus:border-secondary"
-                    />
+                    <p className="text-sm text-dark-muted">Administra el inventario que aparece en la landing pública.</p>
+                    <h3 id="rooms-list-title" className="mt-2 font-display text-2xl font-semibold text-dark">{rooms.length} {rooms.length === 1 ? "apartamento publicado" : "apartamentos publicados"}</h3>
                   </div>
                 </div>
 
-                {/* Expose endpoints details */}
-                {editingRoom.id && (
-                  <div className="p-3 bg-secondary/15 rounded-lg text-[9px] text-dark font-medium leading-normal space-y-1.5 border border-secondary/30">
-                    <span className="font-bold flex items-center gap-1">🔗 Canal iCal Exportable del Hotel:</span>
-                    <p>Usa esta dirección URL para bloquear fechas en Booking / Airbnb automáticamente para este apartamento:</p>
-                    <code className="block bg-white p-2 text-[8px] font-mono break-all text-secondary font-bold select-all border border-warm-border rounded leading-relaxed">
-                      {getPublicApiOrigin()}/api/rooms/{editingRoom.id}/ical
-                    </code>
+                {rooms.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-warm-border bg-white p-10 text-center text-sm leading-6 text-dark-muted shadow-sm">
+                    Aún no hay apartamentos configurados. Crea el primero desde el botón <strong className="text-dark">Nuevo apartamento</strong>.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {rooms.map((room) => {
+                      const integration = roomIntegrations[room.id];
+                      const legacyRoom = room as Room & { airbnb_ical_url?: string; booking_ical_url?: string };
+                      const hasICal = Boolean(integration?.airbnbIcalUrl || integration?.bookingIcalUrl || legacyRoom.airbnb_ical_url || legacyRoom.booking_ical_url);
+                      return (
+                        <article key={room.id} className="card-lift flex flex-col gap-4 rounded-3xl border border-warm-border bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:p-5">
+                          <img
+                            src={room.images[0] || DEFAULT_ROOM_IMAGE_PLACEHOLDER}
+                            alt={`Interior de ${room.name}`}
+                            referrerPolicy="no-referrer"
+                            width={320}
+                            height={192}
+                            loading="lazy"
+                            className="h-28 w-full rounded-2xl object-cover sm:h-24 sm:w-32"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <h4 className="truncate font-display text-2xl font-semibold text-dark">{room.name}</h4>
+                            <p className="mt-1 font-mono text-sm font-bold text-primary">${room.pricePerNight.toLocaleString()} COP <span className="font-sans font-medium text-dark-muted">/ noche</span></p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <span className="rounded-full border border-warm-border bg-warm-card px-3 py-1 text-xs font-semibold text-dark-muted">{room.blockedDates.length} bloqueos</span>
+                              <span className="rounded-full border border-secondary/20 bg-secondary/10 px-3 py-1 text-xs font-semibold text-secondary">Capacidad {room.capacity}</span>
+                              {hasICal && <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">iCal conectado</span>}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2 border-t border-warm-border pt-3 sm:border-t-0 sm:pt-0">
+                            <button type="button" onClick={() => openEditForm(room)} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-warm-border px-4 text-sm font-bold text-secondary transition-colors hover:bg-warm-card" title="Editar apartamento">
+                              <Edit2 className="h-4 w-4" />
+                              Editar
+                            </button>
+                            <button type="button" onClick={() => handleDeleteRoom(room.id)} className="flex min-h-11 min-w-11 items-center justify-center rounded-full border border-red-200 text-red-700 transition-colors hover:bg-red-50" title="Eliminar apartamento" aria-label={`Eliminar ${room.name}`}>
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
                 )}
+              </section>
+            ) : (
+              <section className="rounded-3xl border border-warm-border bg-white p-5 shadow-sm md:p-8" aria-labelledby="room-form-title">
+                <div className="flex flex-col gap-3 border-b border-warm-border pb-5 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-secondary">Ficha de inventario</p>
+                    <h3 id="room-form-title" className="mt-2 font-display text-3xl font-semibold text-dark">{editingRoom.id ? `Editar ${editingRoom.name}` : "Crear nuevo apartamento"}</h3>
+                  </div>
+                  <button type="button" onClick={() => { void handleCancelEditForm(); }} className="inline-flex min-h-11 items-center gap-2 self-start rounded-full border border-warm-border px-4 text-sm font-bold text-dark-muted transition-colors hover:bg-warm-card">
+                    <ChevronRight className="h-4 w-4 rotate-180" />
+                    Volver al listado
+                  </button>
+                </div>
 
-                {/* Form actions */}
-                <button
-                  type="submit"
-                  className="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary-hover text-warm-bg py-3 rounded-lg font-bold shadow-sm transition-all active:scale-95 text-xs font-sans uppercase tracking-wider"
-                >
-                  <Save className="w-4.5 h-4.5" />
-                  <span>Guardar Apartamento</span>
-                </button>
-              </form>
+                <form onSubmit={handleSaveRoom} className="mt-6 space-y-6">
+                  {editingRoom.id ? (
+                    <div>
+                      <label htmlFor="room-id-input" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">ID técnico</label>
+                      <input id="room-id-input" type="text" readOnly value={roomIdInput} className="min-h-11 w-full cursor-not-allowed rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm text-dark-muted opacity-75" />
+                      <p className="mt-2 text-xs text-dark-muted">Se genera automáticamente y no se puede modificar.</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-secondary/20 bg-secondary/10 p-4 text-sm text-dark-muted">El ID técnico se generará automáticamente al crear el apartamento.</div>
+                  )}
+
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <div className="md:col-span-2">
+                      <label htmlFor="room-name" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Nombre comercial *</label>
+                      <input id="room-name" name="roomName" autoComplete="off" type="text" required placeholder="Ej: Apartamento Deluxe Exterior" value={roomName} onChange={(e) => setRoomName(e.target.value)} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 text-sm text-dark placeholder:text-dark-muted/70" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label htmlFor="room-desc" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Descripción *</label>
+                      <textarea id="room-desc" name="description" autoComplete="off" required rows={5} placeholder="Describe acabados, servicios, tipo de cama e iluminación…" value={roomDesc} onChange={(e) => setRoomDesc(e.target.value)} className="w-full rounded-xl border border-warm-border bg-warm-card px-4 py-3 text-sm leading-6 text-dark placeholder:text-dark-muted/70" />
+                    </div>
+                    <div>
+                      <label htmlFor="room-price" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Precio por noche (COP) *</label>
+                      <input id="room-price" name="pricePerNight" inputMode="numeric" autoComplete="off" type="number" required min={1} value={roomPrice} onChange={(e) => setRoomPrice(Number(e.target.value))} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark" />
+                    </div>
+                    <div>
+                      <label htmlFor="room-capacity" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Capacidad máxima *</label>
+                      <input id="room-capacity" name="capacity" inputMode="numeric" autoComplete="off" type="number" required min={1} value={roomCapacity} onChange={(e) => setRoomCapacity(Number(e.target.value))} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark" />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-warm-border bg-warm-card/60 p-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h4 className="font-display text-xl font-semibold text-dark">Fotos del apartamento</h4>
+                        <p className="mt-1 max-w-xl text-sm leading-6 text-dark-muted">Sube imágenes reales a Firebase Storage. Puedes cargar hasta 10 fotos.</p>
+                      </div>
+                      <label className="inline-flex min-h-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-secondary px-4 text-sm font-bold text-warm-bg transition-colors hover:bg-secondary-hover">
+                        {uploadingRoomImages ? "Subiendo…" : "Subir fotos"}
+                        <input type="file" accept="image/*" multiple className="hidden" disabled={uploadingRoomImages} onChange={handleRoomImagesUpload} />
+                      </label>
+                    </div>
+                    {roomImagesUploadError && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{roomImagesUploadError}</p>}
+                    <div className="mt-5 flex gap-3 overflow-x-auto pb-1">
+                      {roomImages.length === 0 && <div className="w-full rounded-2xl border border-dashed border-warm-border bg-white px-4 py-8 text-center text-sm text-dark-muted">Aún no has subido fotos.</div>}
+                      {roomImages.map((img, idx) => (
+                        <div key={idx} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-warm-border bg-white">
+                        <img src={img} alt={`Foto ${idx + 1} del apartamento`} referrerPolicy="no-referrer" width={96} height={96} className="h-full w-full object-cover" />
+                          <button type="button" onClick={() => handleRemoveImage(idx)} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-red-700 text-sm font-bold text-white shadow-sm" aria-label={`Quitar foto ${idx + 1}`}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-warm-border bg-warm-card/60 p-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Integración iCal opcional</p>
+                    <p className="mt-2 text-sm leading-6 text-dark-muted">Estas URLs se guardan en una colección privada y las usa el backend al sincronizar disponibilidad.</p>
+                    <div className="mt-5 space-y-4">
+                      <div>
+                        <label htmlFor="airbnb-url" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Airbnb iCal Feed URL</label>
+                        <input id="airbnb-url" name="airbnbIcalUrl" autoComplete="off" type="url" placeholder="https://www.airbnb.com/calendar/ical/…" value={airbnbUrl} onChange={(e) => setAirbnbUrl(e.target.value)} className="min-h-11 w-full rounded-xl border border-warm-border bg-white px-4 font-mono text-sm text-dark" />
+                      </div>
+                      <div>
+                        <label htmlFor="booking-url" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Booking.com iCal Feed URL</label>
+                        <input id="booking-url" name="bookingIcalUrl" autoComplete="off" type="url" placeholder="https://ical.booking.com/v1/…" value={bookingUrl} onChange={(e) => setBookingUrl(e.target.value)} className="min-h-11 w-full rounded-xl border border-warm-border bg-white px-4 font-mono text-sm text-dark" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {editingRoom.id && (
+                    <div className="rounded-2xl border border-secondary/25 bg-secondary/10 p-4 text-sm leading-6 text-dark">
+                      <span className="font-bold text-secondary">Canal iCal exportable del hotel</span>
+                      <p className="mt-1">Usa esta URL para publicar la disponibilidad del apartamento:</p>
+                      <code className="mt-3 block break-all rounded-xl border border-warm-border bg-white p-3 font-mono text-xs font-bold text-secondary">{getPublicApiOrigin()}/api/rooms/{editingRoom.id}/ical</code>
+                    </div>
+                  )}
+
+                  <button type="submit" className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-bold text-warm-bg shadow-sm transition-colors hover:bg-primary-hover">
+                    <Save className="h-4 w-4" />
+                    Guardar apartamento
+                  </button>
+                </form>
+              </section>
+            )
+          )}
+
+          {activeSection === "availability" && (
+            <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className="space-y-6">
+                <section className="rounded-3xl border border-warm-border bg-white p-6 shadow-sm">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Calendarios externos</p>
+                      <h3 className="mt-2 font-display text-2xl font-semibold text-dark">Sincronización iCal</h3>
+                      <p className="mt-2 max-w-lg text-sm leading-6 text-dark-muted">Combina reservas locales con los bloqueos de Airbnb y Booking.com configurados en cada apartamento.</p>
+                    </div>
+                    <button type="button" onClick={triggerManualICalSync} disabled={syncLoading} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-secondary px-4 text-sm font-bold text-warm-bg shadow-sm transition-colors hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50">
+                      <RefreshCw className={`h-4 w-4 ${syncLoading ? "animate-spin" : ""}`} />
+                      Sincronizar ahora
+                    </button>
+                  </div>
+                  {syncFeedback && <div role="status" aria-live="polite" className="mt-5 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800"><CheckCircle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" /><span>{syncFeedback}</span></div>}
+                </section>
+
+                <section className="rounded-3xl border border-warm-border bg-white p-6 shadow-sm">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Bloqueo manual</p>
+                  <h3 className="mt-2 font-display text-2xl font-semibold text-dark">Mantenimiento y fechas especiales</h3>
+                  <p className="mt-2 text-sm leading-6 text-dark-muted">Bloquea una fecha por mantenimiento o vuelve a liberarla desde aquí.</p>
+                  <form onSubmit={handleAddManualBlock} className="mt-6 space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label htmlFor="blocker-room-id" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Apartamento</label>
+                        <select id="blocker-room-id" value={blockerRoomId} onChange={(e) => setBlockerRoomId(e.target.value)} disabled={rooms.length === 0} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 text-sm font-semibold text-dark disabled:cursor-not-allowed disabled:opacity-60">
+                          {rooms.length === 0 && <option value="">Sin apartamentos</option>}
+                          {rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="manual-block-date" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Fecha</label>
+                        <input id="manual-block-date" type="date" required value={manualBlockDate} onChange={(e) => setManualBlockDate(e.target.value)} disabled={rooms.length === 0} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark disabled:cursor-not-allowed disabled:opacity-60" />
+                      </div>
+                    </div>
+                    <button type="submit" disabled={rooms.length === 0} className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-secondary px-5 text-sm font-bold text-warm-bg transition-colors hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50">Bloquear / liberar fecha</button>
+                  </form>
+                </section>
+              </div>
+
+              <section className="rounded-3xl bg-dark p-6 text-warm-bg shadow-sm">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-accent">Lectura rápida</p>
+                <h3 className="mt-2 font-display text-2xl font-semibold">Disponibilidad del inventario</h3>
+                <div className="mt-6 space-y-3">
+                  {rooms.length === 0 ? <p className="rounded-2xl border border-warm-bg/15 bg-warm-bg/10 p-4 text-sm text-warm-bg/75">Crea un apartamento para comenzar a gestionar fechas.</p> : rooms.map((room) => (
+                    <div key={room.id} className="rounded-2xl border border-warm-bg/15 bg-warm-bg/10 p-4">
+                      <div className="flex items-center justify-between gap-3"><span className="truncate text-sm font-bold">{room.name}</span><span className="font-mono text-xs text-accent">{room.blockedDates.length} días</span></div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-warm-bg/15"><div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, room.blockedDates.length * 5)}%` }} /></div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {activeSection === "branding" && (
+            <section className="rounded-3xl border border-warm-border bg-white p-5 shadow-sm md:p-8" aria-labelledby="branding-title">
+              <div className="border-b border-warm-border pb-5">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Sistema de marca</p>
+                <h3 id="branding-title" className="mt-2 font-display text-3xl font-semibold text-dark">Imagen y alertas</h3>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-dark-muted">Actualiza los activos que ve el huésped y configura los destinos de notificación del equipo.</p>
+              </div>
+
+              {loadingSettings ? <p className="py-8 text-sm text-dark-muted">Cargando preferencias…</p> : settings ? (
+                <form onSubmit={handleSaveNotificationConfig} className="mt-6 space-y-8">
+                  <div className="grid gap-6 xl:grid-cols-2">
+                    <div className="rounded-2xl border border-warm-border bg-warm-card/60 p-5">
+                      <h4 className="font-display text-xl font-semibold text-dark">Logotipo del hotel</h4>
+                      <p className="mt-2 text-sm leading-6 text-dark-muted">Se muestra en la navegación pública y en el encabezado de la experiencia.</p>
+                      <div className="mt-5 flex items-center gap-4">
+                        <img src={settings.hotelLogoUrl || DEFAULT_LOGO_PLACEHOLDER} alt="Vista previa del logo" width={64} height={64} className="h-16 w-16 rounded-2xl border border-warm-border bg-white object-cover" />
+                        <div className="flex flex-wrap gap-2">
+                        <label className="inline-flex min-h-11 cursor-pointer items-center rounded-full bg-secondary px-4 text-sm font-bold text-warm-bg transition-colors hover:bg-secondary-hover">{uploadingLogo ? "Subiendo…" : "Subir logo"}<input type="file" accept="image/*" className="hidden" disabled={uploadingLogo} onChange={handleLogoUpload} /></label>
+                          <button type="button" onClick={handleRemoveLogo} disabled={uploadingLogo || !settings.hotelLogoUrl} className="inline-flex min-h-11 items-center rounded-full border border-warm-border bg-white px-4 text-sm font-bold text-dark transition-colors hover:bg-warm-card disabled:cursor-not-allowed disabled:opacity-50">Quitar</button>
+                        </div>
+                      </div>
+                      {logoUploadError && <p className="mt-3 text-sm font-semibold text-red-700">{logoUploadError}</p>}
+                    </div>
+
+                    <div className="rounded-2xl border border-warm-border bg-warm-card/60 p-5">
+                      <h4 className="font-display text-xl font-semibold text-dark">Imagen principal</h4>
+                      <p className="mt-2 text-sm leading-6 text-dark-muted">Esta imagen se muestra en el hero de la landing pública.</p>
+                      <img src={settings.heroBannerUrl || DEFAULT_HERO_PLACEHOLDER} alt="Vista previa del banner principal" width={640} height={160} className="mt-5 h-32 w-full rounded-2xl border border-warm-border bg-white object-cover" />
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <label className="inline-flex min-h-11 cursor-pointer items-center rounded-full bg-secondary px-4 text-sm font-bold text-warm-bg transition-colors hover:bg-secondary-hover">{uploadingHeroBanner ? "Subiendo…" : "Subir banner"}<input type="file" accept="image/*" className="hidden" disabled={uploadingHeroBanner} onChange={handleHeroBannerUpload} /></label>
+                        <button type="button" onClick={handleRemoveHeroBanner} disabled={uploadingHeroBanner || !settings.heroBannerUrl} className="inline-flex min-h-11 items-center rounded-full border border-warm-border bg-white px-4 text-sm font-bold text-dark transition-colors hover:bg-warm-card disabled:cursor-not-allowed disabled:opacity-50">Quitar</button>
+                      </div>
+                      {heroBannerUploadError && <p className="mt-3 text-sm font-semibold text-red-700">{heroBannerUploadError}</p>}
+                    </div>
+                  </div>
+
+                  <div className="border-t border-warm-border pt-6">
+                    <div className="flex items-center gap-3"><Bell className="h-5 w-5 text-secondary" /><div><h4 className="font-display text-xl font-semibold text-dark">Alertas al host</h4><p className="mt-1 text-sm text-dark-muted">Define qué canales y destinos quedan configurados para las notificaciones.</p></div></div>
+                    <div className="mt-5 grid gap-4 xl:grid-cols-3">
+                      <div className="rounded-2xl border border-warm-border bg-warm-card/60 p-4">
+                        <label className="flex min-h-11 items-center gap-3 text-sm font-bold text-dark"><input type="checkbox" id="email-enabled" checked={settings.notificationConfig.emailEnabled} onChange={(e) => setSettings({ ...settings, notificationConfig: { ...settings.notificationConfig, emailEnabled: e.target.checked } })} className="h-5 w-5 rounded text-primary" /> Correo electrónico</label>
+                        {settings.notificationConfig.emailEnabled && <div className="mt-3"><label htmlFor="email-destination" className="mb-2 block text-xs font-semibold text-dark-muted">Destinatario</label><input id="email-destination" name="emailDestination" autoComplete="email" type="email" required value={settings.notificationConfig.emailDestination} onChange={(e) => setSettings({ ...settings, notificationConfig: { ...settings.notificationConfig, emailDestination: e.target.value } })} className="min-h-11 w-full rounded-xl border border-warm-border bg-white px-3 text-sm text-dark" /></div>}
+                      </div>
+                      <div className="rounded-2xl border border-warm-border bg-warm-card/60 p-4">
+                        <label className="flex min-h-11 items-center gap-3 text-sm font-bold text-dark"><input type="checkbox" id="whatsapp-enabled" checked={settings.notificationConfig.whatsappEnabled} onChange={(e) => setSettings({ ...settings, notificationConfig: { ...settings.notificationConfig, whatsappEnabled: e.target.checked } })} className="h-5 w-5 rounded text-primary" /> WhatsApp</label>
+                        {settings.notificationConfig.whatsappEnabled && <div className="mt-3"><label htmlFor="whatsapp-destination" className="mb-2 block text-xs font-semibold text-dark-muted">Celular destinatario</label><input id="whatsapp-destination" name="whatsappDestination" autoComplete="tel" type="tel" required value={settings.notificationConfig.whatsappDestination} onChange={(e) => setSettings({ ...settings, notificationConfig: { ...settings.notificationConfig, whatsappDestination: e.target.value } })} className="min-h-11 w-full rounded-xl border border-warm-border bg-white px-3 font-mono text-sm font-bold text-dark" /></div>}
+                      </div>
+                      <div className="rounded-2xl border border-warm-border bg-warm-card/60 p-4">
+                        <label className="flex min-h-11 items-center gap-3 text-sm font-bold text-dark"><input type="checkbox" id="sms-enabled" checked={settings.notificationConfig.smsEnabled} onChange={(e) => setSettings({ ...settings, notificationConfig: { ...settings.notificationConfig, smsEnabled: e.target.checked } })} className="h-5 w-5 rounded text-primary" /> SMS / Push</label>
+                        {settings.notificationConfig.smsEnabled && <div className="mt-3"><label htmlFor="sms-destination" className="mb-2 block text-xs font-semibold text-dark-muted">Celular destinatario</label><input id="sms-destination" name="smsDestination" autoComplete="tel" type="tel" required value={settings.notificationConfig.smsDestination} onChange={(e) => setSettings({ ...settings, notificationConfig: { ...settings.notificationConfig, smsDestination: e.target.value } })} className="min-h-11 w-full rounded-xl border border-warm-border bg-white px-3 font-mono text-sm font-bold text-dark" /></div>}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button type="submit" className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-primary px-6 text-sm font-bold text-warm-bg transition-colors hover:bg-primary-hover"><Save className="h-4 w-4" />Guardar configuración</button>
+                </form>
+              ) : <p className="py-8 text-sm text-red-700">Error al inicializar configuraciones.</p>}
             </section>
           )}
-        </div>
-      </div>
 
+          {activeSection === "content" && <PublicContentEditor content={publicContent} onSaved={onPublicContentChange} />}
+        </main>
+      </div>
     </div>
   );
 }

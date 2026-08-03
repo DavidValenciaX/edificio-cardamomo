@@ -17,6 +17,26 @@ Edificio Cardamomo es una aplicación web de reservas para apartaestudios en Nei
 - Despliegue: Firebase Hosting para el frontend, Cloud Run para el backend y GitHub Actions para despliegues y reglas.
 - Tests: Node `node:test` ejecutado con `tsx`; la cobertura actual está en `tests/ical.test.ts`.
 
+## Identidad visual y paleta de marca
+
+La interfaz de Edificio Cardamomo usa una dirección de hospitalidad boutique: cálida, natural y editorial. La paleta no debe reemplazarse por gradientes genéricos ni por el azul/púrpura habitual de dashboards. Los valores oficiales están centralizados en `src/index.css`:
+
+| Token | Hex | Uso recomendado |
+| --- | --- | --- |
+| `primary` | `#6E8C03` | CTA principal, disponibilidad, estados activos y detalles de marca |
+| `primary-hover` | `#566E02` | Estado hover/focus del verde principal |
+| `secondary` | `#736D1D` | Navegación, etiquetas, iconografía y acciones secundarias |
+| `secondary-hover` | `#5D5816` | Estado hover de acciones secundarias |
+| `dark` | `#40301D` | Texto principal y fondos de alto contraste |
+| `dark-muted` | `#665036` | Texto secundario, metadatos y ayudas |
+| `accent` | `#F2C48D` | Destacados cálidos, badges y superficies de énfasis |
+| `accent-hover` | `#E3B278` | Estado hover del acento |
+| `warm-bg` | `#FBF4ED` | Fondo general de la aplicación |
+| `warm-card` | `#F5EAE1` | Superficies secundarias y tarjetas suaves |
+| `warm-border` | `#E8D5C4` | Bordes, divisores y límites de campos |
+
+Tipografía: `Playfair Display` para titulares con carácter, `DM Sans` para lectura e interacción, `Lora` para notas editoriales y `JetBrains Mono` únicamente para datos técnicos. Mantén colores semánticos mediante tokens, contraste WCAG AA, estados focus visibles y una sola familia de iconos vectoriales (`lucide-react`).
+
 ## Estructura importante
 
 | Ruta | Responsabilidad |
