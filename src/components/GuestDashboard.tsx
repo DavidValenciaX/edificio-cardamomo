@@ -554,7 +554,7 @@ export default function GuestDashboard({
                     : isSelected
                     ? "bg-primary text-warm-bg font-bold shadow"
                     : isBetween
-                    ? "bg-accent/40 text-dark font-medium"
+                    ? "border border-primary/25 bg-primary/15 text-dark font-semibold"
                     : "bg-warm-card hover:bg-warm-border text-dark"
                 }`}
               >
