@@ -5,9 +5,12 @@ import { UserProfile } from "../types";
 interface NavbarProps {
   currentRole: "guest" | "admin";
   userProfile: UserProfile | null;
+  guestView: "landing" | "booking";
   onLoginClick: () => void;
   onLogout: () => void;
   onToggleRole: () => void;
+  onShowHome: () => void;
+  onShowBooking: () => void;
   logoUrl: string;
 }
 
@@ -24,9 +27,12 @@ const navItems = [
 export default function Navbar({
   currentRole,
   userProfile,
+  guestView,
   onLoginClick,
   onLogout,
   onToggleRole,
+  onShowHome,
+  onShowBooking,
   logoUrl,
 }: NavbarProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -59,6 +65,7 @@ export default function Navbar({
   }, [currentRole]);
 
   const handleNavigation = (sectionId: string) => {
+    onShowHome();
     setActiveSection(sectionId);
     setIsMenuOpen(false);
   };
@@ -113,6 +120,24 @@ export default function Navbar({
         <div className="ml-auto flex items-center gap-2">
           {userProfile ? (
             <div className="flex items-center gap-2">
+              {currentRole !== "admin" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onShowBooking();
+                    setIsMenuOpen(false);
+                  }}
+                  className={`inline-flex min-h-11 items-center rounded-full px-3 sm:px-4 text-sm font-semibold transition-colors ${
+                    guestView === "booking"
+                      ? "bg-secondary text-warm-bg shadow-sm"
+                      : "border border-warm-border bg-white text-dark hover:bg-warm-card"
+                  }`}
+                >
+                  <span className="hidden sm:inline">Mis reservas</span>
+                  <span className="sm:hidden">Reservas</span>
+                </button>
+              )}
+
               {userProfile.role === "admin" && (
                 <button
                   id="toggle-role-btn"

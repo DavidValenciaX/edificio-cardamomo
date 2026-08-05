@@ -17,13 +17,14 @@ import { getApiUrl } from "../lib/api";
 import { datesForRange } from "../lib/ical";
 import { DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 import { Room, Booking, UserProfile, GuestContact } from "../types";
-import { Calendar as CalendarIcon, Check, Users, DollarSign, ArrowRight, ShieldCheck, Info, X } from "lucide-react";
+import { Calendar as CalendarIcon, Check, Users, DollarSign, ArrowLeft, ArrowRight, ShieldCheck, Info, X } from "lucide-react";
 
 interface GuestDashboardProps {
   rooms: Room[];
   userProfile: UserProfile | null;
   selectedRoomId: string | null;
   onSelectRoomId: (roomId: string | null) => void;
+  onBackToLanding: () => void;
   onRefreshRooms: () => void;
   onTemporaryProfileReady?: (profile: UserProfile) => void;
 }
@@ -37,6 +38,7 @@ export default function GuestDashboard({
   userProfile,
   selectedRoomId,
   onSelectRoomId,
+  onBackToLanding,
   onRefreshRooms,
   onTemporaryProfileReady,
 }: GuestDashboardProps) {
@@ -410,6 +412,14 @@ export default function GuestDashboard({
       {/* 1. Header & Selector de Apartamento */}
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 border-b border-warm-border pb-5">
         <div>
+          <button
+            type="button"
+            onClick={onBackToLanding}
+            className="mb-3 inline-flex items-center gap-2 rounded-full border border-warm-border bg-white px-3 py-2 text-xs font-semibold text-dark transition-colors hover:bg-warm-card"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Volver al inicio
+          </button>
           <h2 className="font-display font-bold text-2xl md:text-3xl text-dark leading-none">Reservar en Línea</h2>
           <p className="text-[11px] md:text-xs text-dark-muted font-medium mt-2">Selecciona tu apartamento preferido y programa tu estadía en el Edificio Cardamomo</p>
         </div>

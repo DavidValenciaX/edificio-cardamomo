@@ -44,6 +44,7 @@ function buildProfileFromAuthUser(user: User, existingProfile?: Partial<UserProf
 export default function App() {
   const [currentRole, setCurrentRole] = useState<'guest' | 'admin'>('guest');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [guestView, setGuestView] = useState<"landing" | "booking">("landing");
   
   // App states
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -156,6 +157,7 @@ export default function App() {
       await signOut(auth);
       setUserProfile(null);
       setCurrentRole('guest');
+      setGuestView("landing");
       setSelectedRoomId(null);
       alert("Sesión cerrada correctamente.");
     } catch (err) {
@@ -190,9 +192,17 @@ export default function App() {
       <Navbar
         currentRole={currentRole}
         userProfile={userProfile}
+        guestView={guestView}
         onLoginClick={() => setIsLoginOpen(true)}
         onLogout={handleLogout}
         onToggleRole={handleToggleRole}
+        onShowHome={() => {
+          setGuestView("landing");
+          setSelectedRoomId(null);
+        }}
+        onShowBooking={() => {
+          setGuestView("booking");
+        }}
         logoUrl={settingsLogo || DEFAULT_LOGO_PLACEHOLDER}
       />
 
@@ -218,7 +228,7 @@ export default function App() {
                 publicContent={publicContent}
                 onPublicContentChange={setPublicContent}
               />
-            ) : selectedRoomId || userProfile ? (
+            ) : guestView === "booking" ? (
               /* Interactive Guest Booking console */
               <div className="space-y-4">
                 {/* Notice header */}
@@ -236,6 +246,10 @@ export default function App() {
                   userProfile={userProfile}
                   selectedRoomId={selectedRoomId}
                   onSelectRoomId={setSelectedRoomId}
+                  onBackToLanding={() => {
+                    setGuestView("landing");
+                    setSelectedRoomId(null);
+                  }}
                   onRefreshRooms={fetchRoomsAndSettings}
                   onTemporaryProfileReady={setUserProfile}
                 />
@@ -248,9 +262,10 @@ export default function App() {
                 publicContent={publicContent}
                 onSelectRoom={(roomId) => {
                   setSelectedRoomId(roomId);
+                  setGuestView("booking");
                 }}
                 onLoginClick={() => setIsLoginOpen(true)}
-                isLoggedIn={false}
+                isLoggedIn={Boolean(userProfile)}
               />
             )}
 
