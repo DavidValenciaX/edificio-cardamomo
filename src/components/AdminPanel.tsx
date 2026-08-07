@@ -808,11 +808,8 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                     <div>
                       <label htmlFor="room-id-input" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">ID técnico</label>
                       <input id="room-id-input" type="text" readOnly value={roomIdInput} className="min-h-11 w-full cursor-not-allowed rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm text-dark-muted opacity-75" />
-                      <p className="mt-2 text-xs text-dark-muted">Se genera automáticamente y no se puede modificar.</p>
                     </div>
-                  ) : (
-                    <div className="rounded-2xl border border-secondary/20 bg-secondary/10 p-4 text-sm text-dark-muted">El ID técnico se generará automáticamente al crear el apartamento.</div>
-                  )}
+                  ) : null}
 
                   <div className="grid gap-5 md:grid-cols-2">
                     <div className="md:col-span-2">
