@@ -77,6 +77,20 @@ service cloud.firestore {
         && data.description is string && data.description.size() <= 3000
         && data.capacity is int && data.capacity >= 1 && data.capacity <= 30
         && data.pricePerNight is number && data.pricePerNight > 0
+        && (
+          !data.keys().hasAny(['features']) ||
+          (
+            data.features is map
+            && data.features.bedrooms is int && data.features.bedrooms >= 1 && data.features.bedrooms <= 20
+            && data.features.beds is int && data.features.beds >= 1 && data.features.beds <= 30
+            && data.features.hasSofaBed is bool
+            && data.features.hasWifi is bool
+            && data.features.hasTv is bool
+            && data.features.hasFullKitchen is bool
+            && data.features.hasFridge is bool
+            && data.features.hasPrivateBathroom is bool
+          )
+        )
         && data.images is list && data.images.size() <= 10
         && data.blockedDates is list && data.blockedDates.size() <= 1000;
     }

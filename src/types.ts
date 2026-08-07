@@ -15,12 +15,24 @@ export interface GuestContact {
   identification: string;
 }
 
+export interface RoomFeatures {
+  bedrooms: number;
+  beds: number;
+  hasSofaBed: boolean;
+  hasWifi: boolean;
+  hasTv: boolean;
+  hasFullKitchen: boolean;
+  hasFridge: boolean;
+  hasPrivateBathroom: boolean;
+}
+
 export interface Room {
   id: string;
   name: string;
   description: string;
   capacity: number;
   pricePerNight: number;
+  features: RoomFeatures;
   images: string[];
   blockedDates: string[]; // Formato YYYY-MM-DD
 }

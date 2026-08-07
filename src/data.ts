@@ -1,4 +1,4 @@
-import { FaqItem, NearbyPlace, PublicContent, PublicPolicies } from "./types";
+import { FaqItem, NearbyPlace, PublicContent, PublicPolicies, Room, RoomFeatures } from "./types";
 
 export const DEFAULT_LOGO_PLACEHOLDER =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='64' fill='%23E5E7EB'/%3E%3Ccircle cx='64' cy='46' r='20' fill='%239CA3AF'/%3E%3Cpath d='M32 104c4-18 18-30 32-30s28 12 32 30' fill='%239CA3AF'/%3E%3C/svg%3E";
@@ -8,6 +8,55 @@ export const DEFAULT_HERO_PLACEHOLDER =
 
 export const DEFAULT_ROOM_IMAGE_PLACEHOLDER =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 640 400'%3E%3Crect width='640' height='400' fill='%23F3F4F6'/%3E%3Crect x='190' y='110' width='260' height='180' rx='18' fill='%23E5E7EB' stroke='%23CBD5E1' stroke-width='8'/%3E%3Ccircle cx='270' cy='170' r='24' fill='%23CBD5E1'/%3E%3Cpath d='M220 250l55-52 42 36 44-42 49 58H220z' fill='%23CBD5E1'/%3E%3C/svg%3E";
+
+export function buildDefaultRoomFeatures(): RoomFeatures {
+  return {
+    bedrooms: 1,
+    beds: 1,
+    hasSofaBed: false,
+    hasWifi: true,
+    hasTv: false,
+    hasFullKitchen: false,
+    hasFridge: false,
+    hasPrivateBathroom: true,
+  };
+}
+
+function asPositiveInt(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function asBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+export function normalizeRoom(raw: unknown, id: string): Room {
+  const input = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  const defaults = buildDefaultRoomFeatures();
+  const rawFeatures = input.features && typeof input.features === "object"
+    ? input.features as Record<string, unknown>
+    : {};
+
+  return {
+    id,
+    name: typeof input.name === "string" ? input.name : "Apartamento",
+    description: typeof input.description === "string" ? input.description : "",
+    capacity: asPositiveInt(input.capacity, 1),
+    pricePerNight: typeof input.pricePerNight === "number" && input.pricePerNight > 0 ? input.pricePerNight : 0,
+    features: {
+      bedrooms: asPositiveInt(rawFeatures.bedrooms, defaults.bedrooms),
+      beds: asPositiveInt(rawFeatures.beds, defaults.beds),
+      hasSofaBed: asBoolean(rawFeatures.hasSofaBed, defaults.hasSofaBed),
+      hasWifi: asBoolean(rawFeatures.hasWifi, defaults.hasWifi),
+      hasTv: asBoolean(rawFeatures.hasTv, defaults.hasTv),
+      hasFullKitchen: asBoolean(rawFeatures.hasFullKitchen, defaults.hasFullKitchen),
+      hasFridge: asBoolean(rawFeatures.hasFridge, defaults.hasFridge),
+      hasPrivateBathroom: asBoolean(rawFeatures.hasPrivateBathroom, defaults.hasPrivateBathroom),
+    },
+    images: Array.isArray(input.images) ? input.images.filter((image): image is string => typeof image === "string") : [],
+    blockedDates: Array.isArray(input.blockedDates) ? input.blockedDates.filter((date): date is string => typeof date === "string") : [],
+  };
+}
 
 const DEFAULT_PUBLIC_POLICIES: PublicPolicies = {
   parking: "Contamos con un único espacio de parqueadero compartido, con capacidad para un automóvil o hasta dos motocicletas. Su disponibilidad puede variar y no se puede garantizar al momento de la llegada.",

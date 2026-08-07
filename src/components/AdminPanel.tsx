@@ -11,8 +11,8 @@ import {
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { auth, db, handleFirestoreError, OperationType, storage } from "../lib/firebase";
 import { getApiUrl, getPublicApiOrigin } from "../lib/api";
-import { DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
-import { PublicContent, Room, RoomIntegration, Settings } from "../types";
+import { buildDefaultRoomFeatures, DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
+import { PublicContent, Room, RoomFeatures, RoomIntegration, Settings } from "../types";
 import PublicContentEditor from "./PublicContentEditor";
 import {
   Bell,
@@ -110,6 +110,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
   const [roomDesc, setRoomDesc] = useState("");
   const [roomPrice, setRoomPrice] = useState(0);
   const [roomCapacity, setRoomCapacity] = useState(2);
+  const [roomFeatures, setRoomFeatures] = useState<RoomFeatures>(buildDefaultRoomFeatures());
   const [roomImages, setRoomImages] = useState<string[]>([]);
   const [originalRoomImages, setOriginalRoomImages] = useState<string[]>([]);
   const [pendingRoomImageDeletes, setPendingRoomImageDeletes] = useState<string[]>([]);
@@ -393,6 +394,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       setRoomDesc(room.description);
       setRoomPrice(room.pricePerNight);
       setRoomCapacity(room.capacity);
+      setRoomFeatures({ ...room.features });
       setRoomImages([...room.images]);
       setOriginalRoomImages([...room.images]);
       setPendingRoomImageDeletes([]);
@@ -408,6 +410,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       setRoomDesc("");
       setRoomPrice(170000);
       setRoomCapacity(2);
+      setRoomFeatures(buildDefaultRoomFeatures());
       setRoomImages([]);
       setOriginalRoomImages([]);
       setPendingRoomImageDeletes([]);
@@ -449,7 +452,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
 
   const handleSaveRoom = async (e: FormEvent) => {
     e.preventDefault();
-    if (!roomIdInput || !roomName || roomPrice <= 0 || roomCapacity <= 0) {
+    if (!roomIdInput || !roomName || roomPrice <= 0 || roomCapacity <= 0 || roomFeatures.bedrooms <= 0 || roomFeatures.beds <= 0) {
       alert("Por favor complete los campos obligatorios.");
       return;
     }
@@ -460,6 +463,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       description: roomDesc,
       pricePerNight: Number(roomPrice),
       capacity: Number(roomCapacity),
+      features: roomFeatures,
       images: roomImages,
       blockedDates: blockedDates
     };
@@ -765,6 +769,9 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                             <div className="mt-3 flex flex-wrap gap-2">
                               <span className="rounded-full border border-warm-border bg-warm-card px-3 py-1 text-xs font-semibold text-dark-muted">{room.blockedDates.length} bloqueos</span>
                               <span className="rounded-full border border-secondary/20 bg-secondary/10 px-3 py-1 text-xs font-semibold text-secondary">Capacidad {room.capacity}</span>
+                              <span className="rounded-full border border-warm-border bg-white px-3 py-1 text-xs font-semibold text-dark-muted">{room.features.bedrooms} hab.</span>
+                              <span className="rounded-full border border-warm-border bg-white px-3 py-1 text-xs font-semibold text-dark-muted">{room.features.beds} camas</span>
+                              {room.features.hasWifi && <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">Wifi</span>}
                               {hasICal && <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">iCal conectado</span>}
                             </div>
                           </div>
@@ -823,6 +830,51 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                     <div>
                       <label htmlFor="room-capacity" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Capacidad máxima *</label>
                       <input id="room-capacity" name="capacity" inputMode="numeric" autoComplete="off" type="number" required min={1} value={roomCapacity} onChange={(e) => setRoomCapacity(Number(e.target.value))} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark" />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-warm-border bg-warm-card/60 p-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Ficha de servicios</p>
+                    <p className="mt-2 text-sm leading-6 text-dark-muted">Estos datos se muestran al huésped durante la reserva para que entienda mejor cómo está distribuido el apartamento.</p>
+                    <div className="mt-5 grid gap-5 md:grid-cols-3">
+                      <div>
+                        <label htmlFor="room-bedrooms" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Habitaciones *</label>
+                        <input id="room-bedrooms" name="bedrooms" inputMode="numeric" autoComplete="off" type="number" required min={1} value={roomFeatures.bedrooms} onChange={(e) => setRoomFeatures((current) => ({ ...current, bedrooms: Number(e.target.value) }))} className="min-h-11 w-full rounded-xl border border-warm-border bg-white px-4 font-mono text-sm font-bold text-dark" />
+                      </div>
+                      <div>
+                        <label htmlFor="room-beds" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Camas *</label>
+                        <input id="room-beds" name="beds" inputMode="numeric" autoComplete="off" type="number" required min={1} value={roomFeatures.beds} onChange={(e) => setRoomFeatures((current) => ({ ...current, beds: Number(e.target.value) }))} className="min-h-11 w-full rounded-xl border border-warm-border bg-white px-4 font-mono text-sm font-bold text-dark" />
+                      </div>
+                      <div className="rounded-2xl border border-warm-border bg-white px-4 py-3 text-sm text-dark">
+                        <span className="block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Capacidad publicada</span>
+                        <span className="mt-2 block font-mono text-lg font-bold text-primary">{roomCapacity} huéspedes</span>
+                      </div>
+                    </div>
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      <label className="flex min-h-11 items-center gap-3 rounded-xl border border-warm-border bg-white px-4 text-sm font-semibold text-dark">
+                        <input type="checkbox" checked={roomFeatures.hasSofaBed} onChange={(e) => setRoomFeatures((current) => ({ ...current, hasSofaBed: e.target.checked }))} className="h-4 w-4 rounded border-warm-border text-primary focus:ring-primary" />
+                        Sofa cama
+                      </label>
+                      <label className="flex min-h-11 items-center gap-3 rounded-xl border border-warm-border bg-white px-4 text-sm font-semibold text-dark">
+                        <input type="checkbox" checked={roomFeatures.hasWifi} onChange={(e) => setRoomFeatures((current) => ({ ...current, hasWifi: e.target.checked }))} className="h-4 w-4 rounded border-warm-border text-primary focus:ring-primary" />
+                        Wifi
+                      </label>
+                      <label className="flex min-h-11 items-center gap-3 rounded-xl border border-warm-border bg-white px-4 text-sm font-semibold text-dark">
+                        <input type="checkbox" checked={roomFeatures.hasTv} onChange={(e) => setRoomFeatures((current) => ({ ...current, hasTv: e.target.checked }))} className="h-4 w-4 rounded border-warm-border text-primary focus:ring-primary" />
+                        TV
+                      </label>
+                      <label className="flex min-h-11 items-center gap-3 rounded-xl border border-warm-border bg-white px-4 text-sm font-semibold text-dark">
+                        <input type="checkbox" checked={roomFeatures.hasFullKitchen} onChange={(e) => setRoomFeatures((current) => ({ ...current, hasFullKitchen: e.target.checked }))} className="h-4 w-4 rounded border-warm-border text-primary focus:ring-primary" />
+                        Cocina completa
+                      </label>
+                      <label className="flex min-h-11 items-center gap-3 rounded-xl border border-warm-border bg-white px-4 text-sm font-semibold text-dark">
+                        <input type="checkbox" checked={roomFeatures.hasFridge} onChange={(e) => setRoomFeatures((current) => ({ ...current, hasFridge: e.target.checked }))} className="h-4 w-4 rounded border-warm-border text-primary focus:ring-primary" />
+                        Nevera
+                      </label>
+                      <label className="flex min-h-11 items-center gap-3 rounded-xl border border-warm-border bg-white px-4 text-sm font-semibold text-dark">
+                        <input type="checkbox" checked={roomFeatures.hasPrivateBathroom} onChange={(e) => setRoomFeatures((current) => ({ ...current, hasPrivateBathroom: e.target.checked }))} className="h-4 w-4 rounded border-warm-border text-primary focus:ring-primary" />
+                        Baño privado
+                      </label>
                     </div>
                   </div>
 

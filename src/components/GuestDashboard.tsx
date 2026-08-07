@@ -406,6 +406,15 @@ export default function GuestDashboard({
     return dateStr > checkIn && dateStr < checkOut;
   };
 
+  const roomServiceBadges = [
+    { label: "Sofa cama", enabled: activeRoom.features.hasSofaBed },
+    { label: "Wifi", enabled: activeRoom.features.hasWifi },
+    { label: "TV", enabled: activeRoom.features.hasTv },
+    { label: "Cocina completa", enabled: activeRoom.features.hasFullKitchen },
+    { label: "Nevera", enabled: activeRoom.features.hasFridge },
+    { label: "Baño privado", enabled: activeRoom.features.hasPrivateBathroom },
+  ].filter((item) => item.enabled);
+
   return (
     <div className="w-full max-w-none py-5 space-y-6">
       
@@ -462,10 +471,33 @@ export default function GuestDashboard({
         </div>
         <div className="p-3 bg-warm-card">
           <h3 className="font-bold text-xs text-dark">{activeRoom.name}</h3>
-          <div className="flex items-center gap-3 text-[10px] text-dark-muted mt-1 font-semibold">
-            <span className="flex items-center gap-1">
-              <Users className="w-3.5 h-3.5 text-secondary" /> Cap: {activeRoom.capacity} Huéspedes
-            </span>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            <div className="rounded-xl border border-warm-border bg-white px-3 py-2">
+              <span className="block text-[9px] font-bold uppercase tracking-wider text-dark-muted">Habitaciones</span>
+              <span className="mt-1 block text-sm font-bold text-dark">{activeRoom.features.bedrooms}</span>
+            </div>
+            <div className="rounded-xl border border-warm-border bg-white px-3 py-2">
+              <span className="block text-[9px] font-bold uppercase tracking-wider text-dark-muted">Camas</span>
+              <span className="mt-1 block text-sm font-bold text-dark">{activeRoom.features.beds}</span>
+            </div>
+            <div className="rounded-xl border border-warm-border bg-white px-3 py-2">
+              <span className="block text-[9px] font-bold uppercase tracking-wider text-dark-muted">Capacidad máxima</span>
+              <span className="mt-1 flex items-center gap-1 text-sm font-bold text-dark">
+                <Users className="h-3.5 w-3.5 text-secondary" />
+                {activeRoom.capacity} huéspedes
+              </span>
+            </div>
+          </div>
+          <div className="mt-3">
+            <span className="block text-[9px] font-bold uppercase tracking-wider text-dark-muted">Servicios incluidos</span>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {roomServiceBadges.map((service) => (
+                <span key={service.label} className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-white px-2.5 py-1 text-[10px] font-semibold text-dark">
+                  <Check className="h-3 w-3 text-primary" />
+                  {service.label}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       </div>

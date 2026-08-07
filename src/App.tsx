@@ -4,7 +4,7 @@ import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from "fireb
 import { auth, db } from "./lib/firebase";
 import { omitUndefinedFields } from "./lib/firestoreData";
 import { UserProfile, Room, Settings, PublicContent } from "./types";
-import { buildDefaultPublicContent, DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, normalizePublicContent } from "./data";
+import { buildDefaultPublicContent, DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, normalizePublicContent, normalizeRoom } from "./data";
 import Navbar from "./components/Navbar";
 import LoginModal from "./components/LoginModal";
 import LandingPage from "./components/LandingPage";
@@ -109,7 +109,7 @@ export default function App() {
       const snap = await getDocs(roomsColRef);
       let list: Room[] = [];
       snap.forEach((doc) => {
-        list.push({ id: doc.id, ...doc.data() } as Room);
+        list.push(normalizeRoom(doc.data(), doc.id));
       });
       setRooms(list);
     } catch (err) {

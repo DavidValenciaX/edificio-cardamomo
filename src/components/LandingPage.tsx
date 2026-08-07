@@ -55,6 +55,22 @@ export default function LandingPage({
   onLoginClick,
   isLoggedIn,
 }: LandingPageProps) {
+  const getRoomFeatureLabels = (room: Room): string[] => {
+    const labels = [
+      `${room.features.bedrooms} ${room.features.bedrooms === 1 ? "habitación" : "habitaciones"}`,
+      `${room.features.beds} ${room.features.beds === 1 ? "cama" : "camas"}`,
+    ];
+
+    if (room.features.hasSofaBed) labels.push("Sofa cama");
+    if (room.features.hasWifi) labels.push("Wifi");
+    if (room.features.hasTv) labels.push("TV");
+    if (room.features.hasFullKitchen) labels.push("Cocina completa");
+    if (room.features.hasFridge) labels.push("Nevera");
+    if (room.features.hasPrivateBathroom) labels.push("Baño privado");
+
+    return labels;
+  };
+
   const policyCards: Array<{ key: keyof PublicPolicies; title: string; icon: LucideIcon }> = [
     { key: "parking", title: "Parqueadero", icon: MapPin },
     { key: "breakfast", title: "Desayuno", icon: Coffee },
@@ -178,6 +194,13 @@ export default function LandingPage({
                       <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Edificio Cardamomo · Neiva</p>
                       <h3 className="mt-2 truncate font-display text-2xl font-semibold text-dark">{room.name}</h3>
                       <p className="mt-3 line-clamp-3 text-sm leading-6 text-dark-muted">{room.description}</p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {getRoomFeatureLabels(room).slice(0, 5).map((label) => (
+                          <span key={label} className="rounded-full border border-warm-border bg-warm-card px-3 py-1 text-xs font-semibold text-dark-muted">
+                            {label}
+                          </span>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="flex items-end justify-between gap-4 border-t border-warm-border pt-4">

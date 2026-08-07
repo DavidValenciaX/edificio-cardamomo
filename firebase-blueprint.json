@@ -26,10 +26,25 @@
         "description": { "type": "string", "description": "Full descriptions and services" },
         "capacity": { "type": "number", "description": "Maximum number of guests" },
         "pricePerNight": { "type": "number", "description": "Price per night in USD / COP" },
+        "features": {
+          "type": "object",
+          "description": "Room distribution and guest-visible services",
+          "properties": {
+            "bedrooms": { "type": "number", "description": "Number of bedrooms" },
+            "beds": { "type": "number", "description": "Total number of beds" },
+            "hasSofaBed": { "type": "boolean", "description": "Whether the room includes a sofa bed" },
+            "hasWifi": { "type": "boolean", "description": "Whether wifi is available" },
+            "hasTv": { "type": "boolean", "description": "Whether a TV is available" },
+            "hasFullKitchen": { "type": "boolean", "description": "Whether the room includes a full kitchen" },
+            "hasFridge": { "type": "boolean", "description": "Whether the room includes a fridge" },
+            "hasPrivateBathroom": { "type": "boolean", "description": "Whether the room includes a private bathroom" }
+          },
+          "required": ["bedrooms", "beds", "hasSofaBed", "hasWifi", "hasTv", "hasFullKitchen", "hasFridge", "hasPrivateBathroom"]
+        },
         "images": { "type": "array", "description": "List of URLs for photos of the room" },
         "blockedDates": { "type": "array", "description": "List of dates (YYYY-MM-DD) that are occupied/blocked" }
       },
-      "required": ["id", "name", "pricePerNight", "capacity"]
+      "required": ["id", "name", "pricePerNight", "capacity", "features"]
     },
     "RoomIntegration": {
       "title": "RoomIntegration",
