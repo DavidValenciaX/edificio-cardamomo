@@ -449,12 +449,12 @@ export default function GuestDashboard({
 
       {/* Hero apartment visual details */}
       <div className="bg-white border border-warm-border rounded-2xl overflow-hidden shadow-sm">
-        <div className="h-[120px] relative">
+        <div className="relative aspect-[16/10] sm:aspect-[3/2] bg-warm-card">
           <img
             src={activeRoom.images[0] || DEFAULT_ROOM_IMAGE_PLACEHOLDER}
             alt={activeRoom.name}
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover object-center"
           />
           <div className="absolute top-2.5 right-2.5 bg-primary text-warm-bg text-[9px] px-2 py-0.5 rounded font-bold font-mono">
             ${activeRoom.pricePerNight.toLocaleString()} COP / Noche
