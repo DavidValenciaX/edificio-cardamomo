@@ -14,6 +14,7 @@ Edificio Cardamomo es una aplicación web de reservas para apartamentos en Neiva
 - Persistencia y autenticación: Firebase Auth, Cloud Firestore y Firebase Storage.
 - Backend Firebase: Firebase Admin SDK con Application Default Credentials.
 - Integraciones: Google Auth Library para validar OIDC de Cloud Scheduler; `fetch` y un parser iCal propio para calendarios externos.
+- Datos compartidos del frontend: defaults y normalización defensiva de habitaciones y contenido público en `src/data.ts`.
 - Despliegue: Firebase Hosting para el frontend, Cloud Run para el backend y GitHub Actions para despliegues y reglas.
 - Tests: Node `node:test` ejecutado con `tsx`; la cobertura actual está en `tests/ical.test.ts`.
 
@@ -41,16 +42,20 @@ Tipografía: `Playfair Display` para titulares con carácter, `DM Sans` para lec
 
 | Ruta | Responsabilidad |
 | --- | --- |
-| `src/App.tsx` | Estado global de autenticación, habitaciones, configuración visual y selección de vista huésped/admin. |
-| `src/components/LandingPage.tsx` | Página pública, apartamentos, servicios, ubicación y CTA de reserva. |
+| `src/App.tsx` | Estado global de autenticación, habitaciones, contenido público, configuración visual y selección de vista huésped/admin. |
+| `src/components/LandingPage.tsx` | Página pública, apartamentos, características, políticas, FAQ, guía local, ubicación y CTA de reserva. |
 | `src/components/GuestDashboard.tsx` | Calendario, validación de contacto, creación/cancelación de reservas y reservas del usuario. |
-| `src/components/AdminPanel.tsx` | CRUD de apartamentos, imágenes, bloqueos manuales, configuración global y URLs iCal. |
+| `src/components/AdminPanel.tsx` | CRUD de apartamentos y sus características, imágenes, bloqueos manuales, configuración global y URLs iCal. |
+| `src/components/PublicContentEditor.tsx` | Edición administrativa por secciones de políticas, preguntas frecuentes y lugares cercanos; guarda cada sección con una transacción Firestore. |
 | `src/components/LoginModal.tsx` | Login/registro con correo y Google; vinculación de sesiones anónimas y consolidación de reservas. |
 | `src/components/Navbar.tsx` | Navegación, sesión, logout y cambio de vista del administrador. |
+| `src/data.ts` | Placeholders, valores por defecto y normalización de habitaciones y contenido público legacy/incompleto. |
 | `src/lib/firebase.ts` | Inicialización del cliente Firebase, Firestore, Auth, Storage y manejo estructurado de errores. |
 | `src/lib/firebaseConfig.ts` | Lectura estricta de variables `VITE_FIREBASE_*`. |
 | `src/lib/api.ts` | Construcción de URLs del backend usando `VITE_API_BASE_URL`. |
-| `src/types.ts` | Modelos `UserProfile`, `Room`, `RoomIntegration`, `Booking` y `Settings`. |
+| `src/lib/firestoreData.ts` | Utilidades para preparar objetos antes de escribirlos en Firestore, incluyendo la eliminación de valores `undefined`. |
+| `src/lib/ical.ts` | Rangos de fechas, generación/parsing de iCal y combinación de reservas locales con feeds externos. |
+| `src/types.ts` | Modelos `UserProfile`, `Room`, `RoomFeatures`, `RoomIntegration`, `Booking`, `Settings` y `PublicContent`, además de sus subtipos. |
 | `server.ts` | API Express, Firebase Admin, consolidación de usuarios, feeds/sincronización iCal y notificaciones simuladas. |
 | `firestore.rules` | Reglas y validación de documentos de Firestore. Mantiene denegación por defecto. |
 | `storage.rules` | Lectura pública y escritura de administración para `branding/**` y `rooms/**`. |
@@ -62,9 +67,11 @@ Las colecciones principales son:
 
 - `users/{uid}`: perfil de Auth, rol (`guest` o `admin`), datos de contacto y si la sesión es temporal.
 - `rooms/{roomId}`: nombre, descripción, capacidad, precio por noche, imágenes y `blockedDates` en formato `YYYY-MM-DD`.
+- `rooms/{roomId}` también contiene `features`: habitaciones, camas y flags de sofá cama, aire acondicionado, wifi, TV, cocina completa, nevera y baño privado.
 - `roomIntegrations/{roomId}`: URLs iCal privadas para Airbnb y Booking.com. No deben volver a guardarse en `rooms` salvo para compatibilidad/migración legacy.
 - `bookings/{bookingId}`: reserva, usuario, contacto del huésped, fechas, estado y total. Los estados son `confirmed` y `cancelled`.
 - `settings/global`: logo, banner hero y configuración de notificaciones.
+- `publicContent/global`: contenido visible sin autenticación: introducción, políticas, preguntas frecuentes y lugares cercanos con enlaces de mapa.
 
 Consideraciones que deben conservarse:
 
@@ -75,6 +82,7 @@ Consideraciones que deben conservarse:
 5. Al cancelar, el huésped solo puede cambiar `status` de su propia reserva a `cancelled`; después se liberan las fechas del apartamento.
 6. El checkout iCal es exclusivo: el rango bloqueado incluye check-in y excluye check-out. Mantén el formato `YYYY-MM-DD` al tocar cálculos de disponibilidad.
 7. `POST /api/notify-booking` actualmente simula email, WhatsApp y SMS escribiendo logs; no debe describirse ni tratarse como integración real con proveedores externos.
+8. `publicContent/global` se puede leer públicamente, pero solo un administrador puede crearlo, actualizarlo o eliminarlo. El editor guarda por sección y conserva las secciones no editadas mediante una transacción.
 
 ## Desarrollo local
 
@@ -112,7 +120,7 @@ El build requiere las variables de Firebase del cliente; no reemplaces valores r
 ## API del backend
 
 - `POST /api/consolidate-temporary-user`: valida tokens Firebase temporal y final, consolida el perfil y migra reservas anónimas.
-- `GET /api/rooms/:roomId/ical`: publica las reservas confirmadas de un apartamento como calendario iCal.
+- `GET /api/rooms/:roomId/ical`: publica como calendario iCal la proyección completa de `rooms.blockedDates`, que puede incluir reservas directas y fechas importadas desde Airbnb/Booking.
 - `POST /api/sync-ical`: combina reservas locales y calendarios externos, deduplica `blockedDates` y actualiza Firestore. Acepta token Firebase de admin, token OIDC autorizado de Cloud Scheduler o llamada loopback local.
 - `POST /api/notify-booking`: registra notificaciones simuladas según `settings/global`.
 
@@ -146,13 +154,14 @@ Las variables de despliegue se inyectan como secretos de GitHub. Los nombres y s
 - No uses Firebase Admin SDK en código del cliente. El Admin SDK salta las reglas de Firestore y solo pertenece al backend.
 - Revisa autenticación y autorización de cualquier endpoint nuevo; el servidor Express está desplegado con `--allow-unauthenticated` y debe proteger cada operación sensible.
 - No aflojes la regla de denegación por defecto ni la validación de tipos/tamaños sin una justificación explícita.
-- Después de cambiar reglas, prueba tanto el acceso público esperado (`rooms`, `settings/global`) como las operaciones autenticadas de huésped y administrador.
+- Después de cambiar reglas, prueba tanto el acceso público esperado (`rooms`, `settings/global`, `publicContent/global`) como las operaciones autenticadas de huésped y administrador.
 
 ## Diagnóstico rápido
 
 - Error de configuración Firebase al arrancar el cliente: falta una variable `VITE_FIREBASE_*` obligatoria.
 - Error del servidor al iniciar: falta `FIREBASE_PROJECT_ID` o Application Default Credentials.
 - Error de permisos Firestore: compara la operación con `firestore.rules`, especialmente `createdAt`, `request.auth.uid`, rol admin y la colección `roomIntegrations`.
+- El contenido público no guarda cambios: revisa que la sesión tenga autorización de administrador y que `publicContent/global` cumpla las validaciones de tamaño de `firestore.rules`.
 - El frontend no llega al backend en producción: revisa `VITE_API_BASE_URL`, CORS y `CORS_ALLOWED_ORIGINS`.
 - iCal no se actualiza: comprueba las URLs guardadas en `roomIntegrations`, el token requerido por `/api/sync-ical` y la configuración de Cloud Scheduler.
 - Imágenes no suben: valida tipo/tamaño en `AdminPanel`, Firebase Storage y las reglas de `branding/**` o `rooms/**`.
