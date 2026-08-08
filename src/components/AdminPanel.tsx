@@ -12,6 +12,7 @@ import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage
 import { auth, db, handleFirestoreError, OperationType, storage } from "../lib/firebase";
 import { getApiUrl, getPublicApiOrigin } from "../lib/api";
 import { buildDefaultRoomFeatures, DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
+import { getOccupancyPriceOptions, getRoomStartingPrice } from "../lib/pricing";
 import { PublicContent, Room, RoomFeatures, RoomIntegration, Settings } from "../types";
 import PublicContentEditor from "./PublicContentEditor";
 import {
@@ -108,7 +109,9 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
   const [roomIdInput, setRoomIdInput] = useState("");
   const [roomName, setRoomName] = useState("");
   const [roomDesc, setRoomDesc] = useState("");
-  const [roomPrice, setRoomPrice] = useState("");
+  const [roomBasePrice, setRoomBasePrice] = useState("");
+  const [roomBaseOccupancy, setRoomBaseOccupancy] = useState(1);
+  const [roomExtraGuestPrice, setRoomExtraGuestPrice] = useState("0");
   const [roomCapacity, setRoomCapacity] = useState(2);
   const [roomFeatures, setRoomFeatures] = useState<RoomFeatures>(buildDefaultRoomFeatures());
   const [roomImages, setRoomImages] = useState<string[]>([]);
@@ -392,7 +395,9 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       setRoomIdInput(room.id);
       setRoomName(room.name);
       setRoomDesc(room.description);
-      setRoomPrice(String(room.pricePerNight));
+      setRoomBasePrice(String(room.pricing.basePricePerNight));
+      setRoomBaseOccupancy(room.pricing.baseOccupancy);
+      setRoomExtraGuestPrice(String(room.pricing.extraGuestPricePerNight));
       setRoomCapacity(room.capacity);
       setRoomFeatures({ ...room.features });
       setRoomImages([...room.images]);
@@ -408,7 +413,9 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       setRoomIdInput(newRoomRef.id);
       setRoomName("");
       setRoomDesc("");
-      setRoomPrice("170000");
+      setRoomBasePrice("170000");
+      setRoomBaseOccupancy(1);
+      setRoomExtraGuestPrice("0");
       setRoomCapacity(2);
       setRoomFeatures(buildDefaultRoomFeatures());
       setRoomImages([]);
@@ -452,14 +459,20 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
 
   const handleSaveRoom = async (e: FormEvent) => {
     e.preventDefault();
-    const parsedRoomPrice = Number(roomPrice);
+    const parsedBasePrice = Number(roomBasePrice);
+    const parsedExtraGuestPrice = Number(roomExtraGuestPrice);
     if (
       !roomIdInput
       || !roomName
-      || !roomPrice.trim()
-      || Number.isNaN(parsedRoomPrice)
-      || parsedRoomPrice <= 0
+      || !roomBasePrice.trim()
+      || Number.isNaN(parsedBasePrice)
+      || parsedBasePrice <= 0
+      || !roomExtraGuestPrice.trim()
+      || Number.isNaN(parsedExtraGuestPrice)
+      || parsedExtraGuestPrice < 0
       || roomCapacity <= 0
+      || roomBaseOccupancy <= 0
+      || roomBaseOccupancy > roomCapacity
       || roomFeatures.bedrooms <= 0
       || roomFeatures.beds <= 0
     ) {
@@ -471,8 +484,12 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       id: roomIdInput,
       name: roomName,
       description: roomDesc,
-      pricePerNight: parsedRoomPrice,
       capacity: Number(roomCapacity),
+      pricing: {
+        baseOccupancy: Number(roomBaseOccupancy),
+        basePricePerNight: parsedBasePrice,
+        extraGuestPricePerNight: parsedExtraGuestPrice,
+      },
       features: roomFeatures,
       images: roomImages,
       blockedDates: blockedDates
@@ -613,6 +630,31 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
   }).length;
 
   const activeSectionMeta = adminSections.find((section) => section.id === activeSection) || adminSections[0];
+  const parsedBasePrice = Number(roomBasePrice);
+  const parsedExtraGuestPrice = Number(roomExtraGuestPrice);
+  const canPreviewPricing = Number.isFinite(parsedBasePrice)
+    && parsedBasePrice > 0
+    && Number.isFinite(parsedExtraGuestPrice)
+    && parsedExtraGuestPrice >= 0
+    && roomCapacity > 0
+    && roomBaseOccupancy > 0
+    && roomBaseOccupancy <= roomCapacity;
+  const roomPricingPreview = canPreviewPricing
+    ? getOccupancyPriceOptions({
+        id: roomIdInput || "preview",
+        name: roomName || "Apartamento",
+        description: roomDesc,
+        capacity: roomCapacity,
+        pricing: {
+          baseOccupancy: roomBaseOccupancy,
+          basePricePerNight: parsedBasePrice,
+          extraGuestPricePerNight: parsedExtraGuestPrice,
+        },
+        features: roomFeatures,
+        images: roomImages,
+        blockedDates,
+      })
+    : [];
 
   return (
     <div className="mx-auto w-full max-w-[1440px] py-6 lg:py-10">
@@ -775,7 +817,12 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                           />
                           <div className="min-w-0 flex-1">
                             <h4 className="truncate font-display text-2xl font-semibold text-dark">{room.name}</h4>
-                            <p className="mt-1 font-mono text-sm font-bold text-primary">${room.pricePerNight.toLocaleString()} COP <span className="font-sans font-medium text-dark-muted">/ noche</span></p>
+                            <p className="mt-1 font-mono text-sm font-bold text-primary">
+                              Desde ${getRoomStartingPrice(room).toLocaleString()} COP <span className="font-sans font-medium text-dark-muted">/ noche</span>
+                            </p>
+                            <p className="mt-1 text-xs text-dark-muted">
+                              Base para {room.pricing.baseOccupancy} {room.pricing.baseOccupancy === 1 ? "huésped" : "huéspedes"} y +${room.pricing.extraGuestPricePerNight.toLocaleString()} COP por huésped adicional.
+                            </p>
                             <div className="mt-3 flex flex-wrap gap-2">
                               <span className="rounded-full border border-warm-border bg-warm-card px-3 py-1 text-xs font-semibold text-dark-muted">{room.blockedDates.length} bloqueos</span>
                               <span className="rounded-full border border-secondary/20 bg-secondary/10 px-3 py-1 text-xs font-semibold text-secondary">Capacidad {room.capacity}</span>
@@ -831,13 +878,49 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                       <textarea id="room-desc" name="description" autoComplete="off" required rows={5} placeholder="Describe acabados, servicios, tipo de cama e iluminación…" value={roomDesc} onChange={(e) => setRoomDesc(e.target.value)} className="w-full rounded-xl border border-warm-border bg-warm-card px-4 py-3 text-sm leading-6 text-dark placeholder:text-dark-muted/70" />
                     </div>
                     <div>
-                      <label htmlFor="room-price" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Precio por noche (COP) *</label>
-                      <input id="room-price" name="pricePerNight" inputMode="numeric" autoComplete="off" type="number" required min={1} value={roomPrice} onChange={(e) => setRoomPrice(e.target.value)} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark" />
+                      <label htmlFor="room-base-price" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Precio base por noche (COP) *</label>
+                      <input id="room-base-price" name="basePricePerNight" inputMode="numeric" autoComplete="off" type="number" required min={1} value={roomBasePrice} onChange={(e) => setRoomBasePrice(e.target.value)} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark" />
+                      <p className="mt-2 text-xs leading-5 text-dark-muted">Corresponde a la ocupación base definida abajo.</p>
+                    </div>
+                    <div>
+                      <label htmlFor="room-base-occupancy" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Ocupación base *</label>
+                      <input id="room-base-occupancy" name="baseOccupancy" inputMode="numeric" autoComplete="off" type="number" required min={1} max={roomCapacity} value={roomBaseOccupancy} onChange={(e) => setRoomBaseOccupancy(Number(e.target.value))} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark" />
                     </div>
                     <div>
                       <label htmlFor="room-capacity" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Capacidad máxima *</label>
-                      <input id="room-capacity" name="capacity" inputMode="numeric" autoComplete="off" type="number" required min={1} value={roomCapacity} onChange={(e) => setRoomCapacity(Number(e.target.value))} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark" />
+                      <input id="room-capacity" name="capacity" inputMode="numeric" autoComplete="off" type="number" required min={1} value={roomCapacity} onChange={(e) => {
+                        const nextCapacity = Number(e.target.value);
+                        setRoomCapacity(nextCapacity);
+                        setRoomBaseOccupancy((current) => Math.min(Math.max(current, 1), Math.max(nextCapacity, 1)));
+                      }} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark" />
                     </div>
+                    <div>
+                      <label htmlFor="room-extra-guest-price" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Recargo por huésped adicional (COP) *</label>
+                      <input id="room-extra-guest-price" name="extraGuestPricePerNight" inputMode="numeric" autoComplete="off" type="number" required min={0} value={roomExtraGuestPrice} onChange={(e) => setRoomExtraGuestPrice(e.target.value)} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark" />
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-secondary/20 bg-secondary/10 p-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Vista previa tarifaria</p>
+                    <p className="mt-2 text-sm leading-6 text-dark-muted">El huésped verá claramente cuánto cuesta la noche según el número de personas que seleccione.</p>
+                    {canPreviewPricing ? (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {roomPricingPreview.map((option) => (
+                          <div key={option.guestCount} className="rounded-2xl border border-warm-border bg-white px-4 py-3">
+                            <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-dark-muted">
+                              {option.guestCount} {option.guestCount === 1 ? "huésped" : "huéspedes"}
+                            </span>
+                            <span className="mt-2 block font-mono text-lg font-bold text-primary">
+                              ${option.nightlyPrice.toLocaleString()} COP
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+                        Ajusta precio base, ocupación base, capacidad y recargo adicional para generar la vista previa.
+                      </p>
+                    )}
                   </div>
 
                   <div className="rounded-2xl border border-warm-border bg-warm-card/60 p-5">

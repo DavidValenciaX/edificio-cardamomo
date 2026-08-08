@@ -25,7 +25,16 @@
         "name": { "type": "string", "description": "Name or title of the room" },
         "description": { "type": "string", "description": "Full descriptions and services" },
         "capacity": { "type": "number", "description": "Maximum number of guests" },
-        "pricePerNight": { "type": "number", "description": "Price per night in USD / COP" },
+        "pricing": {
+          "type": "object",
+          "description": "Dynamic nightly pricing based on occupancy",
+          "properties": {
+            "baseOccupancy": { "type": "number", "description": "Guest count included in the base nightly rate" },
+            "basePricePerNight": { "type": "number", "description": "Nightly rate for the base occupancy in COP" },
+            "extraGuestPricePerNight": { "type": "number", "description": "Additional nightly rate charged for each guest beyond the base occupancy" }
+          },
+          "required": ["baseOccupancy", "basePricePerNight", "extraGuestPricePerNight"]
+        },
         "features": {
           "type": "object",
           "description": "Room distribution and guest-visible services",
@@ -45,7 +54,7 @@
         "images": { "type": "array", "description": "List of URLs for photos of the room" },
         "blockedDates": { "type": "array", "description": "List of dates (YYYY-MM-DD) that are occupied/blocked" }
       },
-      "required": ["id", "name", "pricePerNight", "capacity", "features"]
+      "required": ["id", "name", "pricing", "capacity", "features"]
     },
     "RoomIntegration": {
       "title": "RoomIntegration",
@@ -77,13 +86,15 @@
           },
           "required": ["fullName", "phone", "identification"]
         },
+        "guestCount": { "type": "number", "description": "Number of guests included in the reservation" },
         "checkIn": { "type": "string", "format": "date", "description": "Start date (YYYY-MM-DD)" },
         "checkOut": { "type": "string", "format": "date", "description": "End date (YYYY-MM-DD)" },
         "status": { "type": "string", "enum": ["confirmed", "cancelled"], "description": "Reservation status" },
+        "nightlyPriceApplied": { "type": "number", "description": "Per-night price captured at booking time based on guest count" },
         "totalPrice": { "type": "number", "description": "Grand total based on dates and price" },
         "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
       },
-      "required": ["id", "roomId", "userId", "guestContact", "checkIn", "checkOut", "status", "totalPrice", "createdAt"]
+      "required": ["id", "roomId", "userId", "guestContact", "guestCount", "checkIn", "checkOut", "status", "nightlyPriceApplied", "totalPrice", "createdAt"]
     },
     "Settings": {
       "title": "Settings",

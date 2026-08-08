@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { PublicPolicies, PublicContent, Room } from "../types";
 import { DEFAULT_HERO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
+import { getOccupancyPriceOptions, getRoomStartingPrice } from "../lib/pricing";
 
 interface LandingPageProps {
   rooms: Room[];
@@ -80,6 +81,10 @@ export default function LandingPage({
     { key: "reception", title: "Recepción", icon: Building2 },
     { key: "selfCheckIn", title: "Llegada coordinada", icon: ShieldCheck },
   ];
+
+  const getPricingLabel = (guestCount: number): string => {
+    return `${guestCount} ${guestCount === 1 ? "huésped" : "huéspedes"}`;
+  };
 
   return (
     <div className="brand-grain w-full pt-4 pb-16 md:pt-6">
@@ -205,11 +210,18 @@ export default function LandingPage({
                     </div>
 
                     <div className="flex items-end justify-between gap-4 border-t border-warm-border pt-4">
-                      <div>
+                      <div className="min-w-0">
                         <span className="block text-xs font-semibold uppercase tracking-[0.12em] text-dark-muted">Desde</span>
                         <span className="mt-1 block font-mono text-base font-bold text-primary">
-                          ${room.pricePerNight.toLocaleString()} <span className="font-sans text-sm font-medium text-dark-muted">/ noche</span>
+                          ${getRoomStartingPrice(room).toLocaleString()} <span className="font-sans text-sm font-medium text-dark-muted">/ noche</span>
                         </span>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {getOccupancyPriceOptions(room).map((option) => (
+                            <span key={option.guestCount} className="rounded-full border border-secondary/20 bg-secondary/10 px-3 py-1 text-[11px] font-semibold text-secondary">
+                              {getPricingLabel(option.guestCount)}: ${option.nightlyPrice.toLocaleString()}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                       <button
                         onClick={() => onSelectRoom(room.id)}

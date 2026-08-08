@@ -2,7 +2,7 @@
 
 ## Propósito del proyecto
 
-Edificio Cardamomo es una aplicación web de reservas para apartamentos en Neiva, Huila. Permite consultar apartamentos, seleccionar fechas, crear reservas como huésped anónimo o usuario registrado, administrar inventario y disponibilidad, cargar imágenes de marca y sincronizar bloqueos desde calendarios iCal de Airbnb y Booking.com.
+Edificio Cardamomo es una aplicación web de reservas para apartamentos en Neiva, Huila. Permite consultar apartamentos, seleccionar fechas, crear reservas como huésped anónimo o usuario registrado, administrar inventario y disponibilidad, configurar precios variables según ocupación, cargar imágenes de marca y sincronizar bloqueos desde calendarios iCal de Airbnb y Booking.com.
 
 ## Stack y arquitectura
 
@@ -44,8 +44,8 @@ Tipografía: `Playfair Display` para titulares con carácter, `DM Sans` para lec
 | --- | --- |
 | `src/App.tsx` | Estado global de autenticación, habitaciones, contenido público, configuración visual y selección de vista huésped/admin. |
 | `src/components/LandingPage.tsx` | Página pública, apartamentos, características, políticas, FAQ, guía local, ubicación y CTA de reserva. |
-| `src/components/GuestDashboard.tsx` | Calendario, validación de contacto, creación/cancelación de reservas y reservas del usuario. |
-| `src/components/AdminPanel.tsx` | CRUD de apartamentos y sus características, imágenes, bloqueos manuales, configuración global y URLs iCal. |
+| `src/components/GuestDashboard.tsx` | Calendario, selección de huéspedes, cálculo de precio según ocupación, validación de contacto, creación/cancelación de reservas y reservas del usuario. |
+| `src/components/AdminPanel.tsx` | CRUD de apartamentos y sus características, precios por ocupación, imágenes, bloqueos manuales, configuración global y URLs iCal. |
 | `src/components/PublicContentEditor.tsx` | Edición administrativa por secciones de políticas, preguntas frecuentes y lugares cercanos; guarda cada sección con una transacción Firestore. |
 | `src/components/LoginModal.tsx` | Login/registro con correo y Google; vinculación de sesiones anónimas y consolidación de reservas. |
 | `src/components/Navbar.tsx` | Navegación, sesión, logout y cambio de vista del administrador. |
@@ -55,6 +55,7 @@ Tipografía: `Playfair Display` para titulares con carácter, `DM Sans` para lec
 | `src/lib/api.ts` | Construcción de URLs del backend usando `VITE_API_BASE_URL`. |
 | `src/lib/firestoreData.ts` | Utilidades para preparar objetos antes de escribirlos en Firestore, incluyendo la eliminación de valores `undefined`. |
 | `src/lib/ical.ts` | Rangos de fechas, generación/parsing de iCal y combinación de reservas locales con feeds externos. |
+| `src/lib/pricing.ts` | Cálculo centralizado de tarifas por ocupación, precio inicial visible y opciones de precio por cantidad de huéspedes. |
 | `src/types.ts` | Modelos `UserProfile`, `Room`, `RoomFeatures`, `RoomIntegration`, `Booking`, `Settings` y `PublicContent`, además de sus subtipos. |
 | `server.ts` | API Express, Firebase Admin, consolidación de usuarios, feeds/sincronización iCal y notificaciones simuladas. |
 | `firestore.rules` | Reglas y validación de documentos de Firestore. Mantiene denegación por defecto. |
@@ -66,10 +67,11 @@ Tipografía: `Playfair Display` para titulares con carácter, `DM Sans` para lec
 Las colecciones principales son:
 
 - `users/{uid}`: perfil de Auth, rol (`guest` o `admin`), datos de contacto y si la sesión es temporal.
-- `rooms/{roomId}`: nombre, descripción, capacidad, precio por noche, imágenes y `blockedDates` en formato `YYYY-MM-DD`.
+- `rooms/{roomId}`: nombre, descripción, capacidad, `pricing`, imágenes y `blockedDates` en formato `YYYY-MM-DD`.
 - `rooms/{roomId}` también contiene `features`: habitaciones, camas y flags de sofá cama, aire acondicionado, wifi, TV, cocina completa, nevera y baño privado.
+- `rooms/{roomId}.pricing`: tarifa base por noche para una ocupación base y recargo por cada huésped adicional. El shape actual es `baseOccupancy`, `basePricePerNight` y `extraGuestPricePerNight`.
 - `roomIntegrations/{roomId}`: URLs iCal privadas para Airbnb y Booking.com. No deben volver a guardarse en `rooms` salvo para compatibilidad/migración legacy.
-- `bookings/{bookingId}`: reserva, usuario, contacto del huésped, fechas, estado y total. Los estados son `confirmed` y `cancelled`.
+- `bookings/{bookingId}`: reserva, usuario, contacto del huésped, `guestCount`, `nightlyPriceApplied`, fechas, estado y total. Los estados son `confirmed` y `cancelled`.
 - `settings/global`: logo, banner hero y configuración de notificaciones.
 - `publicContent/global`: contenido visible sin autenticación: introducción, políticas, preguntas frecuentes y lugares cercanos con enlaces de mapa.
 
@@ -78,11 +80,13 @@ Consideraciones que deben conservarse:
 1. El acceso anónimo permite reservar. Al registrarse con correo o Google, `LoginModal` consolida el perfil temporal y migra sus reservas mediante `POST /api/consolidate-temporary-user`.
 2. El administrador se identifica por `ADMIN_EMAIL`; las reglas de Firestore también validan correo verificado, colección `admins` o rol admin en el perfil. No conviertas el rol en un dato controlable por el cliente.
 3. Las reservas requieren nombre completo, celular e identificación. Las reglas de Firestore validan longitud, tipos, fechas como strings de 10 caracteres y `createdAt == request.time`.
-4. Al reservar, el frontend escribe la reserva y luego actualiza `rooms.blockedDates` en operaciones separadas. Este flujo no es una transacción; cualquier cambio relacionado con concurrencia o doble reserva debe evaluar primero migrarlo a una transacción o a una operación backend atómica.
-5. Al cancelar, el huésped solo puede cambiar `status` de su propia reserva a `cancelled`; después se liberan las fechas del apartamento.
-6. El checkout iCal es exclusivo: el rango bloqueado incluye check-in y excluye check-out. Mantén el formato `YYYY-MM-DD` al tocar cálculos de disponibilidad.
-7. `POST /api/notify-booking` actualmente simula email, WhatsApp y SMS escribiendo logs; no debe describirse ni tratarse como integración real con proveedores externos.
-8. `publicContent/global` se puede leer públicamente, pero solo un administrador puede crearlo, actualizarlo o eliminarlo. El editor guarda por sección y conserva las secciones no editadas mediante una transacción.
+4. La tarifa visible al huésped depende de la cantidad de personas seleccionada. El cálculo actual usa `basePricePerNight` para `baseOccupancy` y suma `extraGuestPricePerNight` por cada huésped adicional hasta `capacity`. Evita duplicar esta lógica fuera de `src/lib/pricing.ts`.
+5. Al reservar, se debe persistir tanto `guestCount` como `nightlyPriceApplied` junto con `totalPrice`, para conservar la tarifa pactada aunque luego cambie la configuración del apartamento.
+6. Al reservar, el frontend escribe la reserva y luego actualiza `rooms.blockedDates` en operaciones separadas. Este flujo no es una transacción; cualquier cambio relacionado con concurrencia o doble reserva debe evaluar primero migrarlo a una transacción o a una operación backend atómica.
+7. Al cancelar, el huésped solo puede cambiar `status` de su propia reserva a `cancelled`; después se liberan las fechas del apartamento.
+8. El checkout iCal es exclusivo: el rango bloqueado incluye check-in y excluye check-out. Mantén el formato `YYYY-MM-DD` al tocar cálculos de disponibilidad.
+9. `POST /api/notify-booking` actualmente simula email, WhatsApp y SMS escribiendo logs; no debe describirse ni tratarse como integración real con proveedores externos.
+10. `publicContent/global` se puede leer públicamente, pero solo un administrador puede crearlo, actualizarlo o eliminarlo. El editor guarda por sección y conserva las secciones no editadas mediante una transacción.
 
 ## Desarrollo local
 
@@ -142,8 +146,10 @@ Las variables de despliegue se inyectan como secretos de GitHub. Los nombres y s
 - Mantén los componentes como funciones con export default y conserva la separación de responsabilidades existente.
 - Usa las clases utilitarias Tailwind y los tokens de color/fuentes definidos en `src/index.css`; evita introducir CSS global o colores arbitrarios si el token existente cubre el caso.
 - Reutiliza `getApiUrl` para las llamadas al backend y `handleFirestoreError` cuando agregues operaciones Firestore que requieran diagnóstico estructurado.
+- Reutiliza `src/lib/pricing.ts` para cualquier cálculo o visualización de tarifas por ocupación. No repliques la fórmula en componentes, reglas de presentación ni helpers ad hoc.
 - Si cambias una colección, un campo o una operación de escritura, revisa conjuntamente `src/types.ts`, el consumidor frontend, `firebase-blueprint.json`, `firestore.rules` y `storage.rules` cuando corresponda.
 - Conserva la compatibilidad con datos legacy `airbnb_ical_url` y `booking_ical_url` si modificas la migración de integraciones iCal.
+- Conserva compatibilidad de lectura con datos legacy que aún puedan traer `pricePerNight` en `rooms`; la normalización actual migra de forma defensiva hacia `pricing`.
 - No agregues dependencias ni cambies scripts sin actualizar `package-lock.json`.
 - No hay formatter o linter adicional configurado; sigue el estilo del archivo que estés modificando y valida con TypeScript.
 

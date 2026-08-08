@@ -15,6 +15,7 @@ import {
 import { auth, db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { getApiUrl } from "../lib/api";
 import { datesForRange } from "../lib/ical";
+import { getNightlyPriceForGuests, getOccupancyPriceOptions, getRoomStartingPrice } from "../lib/pricing";
 import { DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 import { Room, Booking, UserProfile, GuestContact } from "../types";
 import { Calendar as CalendarIcon, Check, Users, DollarSign, ArrowLeft, ArrowRight, ShieldCheck, Info, X } from "lucide-react";
@@ -54,6 +55,7 @@ export default function GuestDashboard({
   // Booking details
   const [checkIn, setCheckIn] = useState<string | null>(null); // YYYY-MM-DD
   const [checkOut, setCheckOut] = useState<string | null>(null); // YYYY-MM-DD
+  const [guestCount, setGuestCount] = useState(1);
   const [bookingError, setBookingError] = useState("");
   const [bookingLoading, setBookingLoading] = useState(false);
   const [successBooking, setSuccessBooking] = useState<Booking | null>(null);
@@ -72,9 +74,10 @@ export default function GuestDashboard({
       // If room changes, adjust selected dates if they are no longer suitable
       setCheckIn(null);
       setCheckOut(null);
+      setGuestCount(Math.min(Math.max(activeRoom.pricing.baseOccupancy, 1), activeRoom.capacity));
       setBookingError("");
     }
-  }, [selectedRoomId]);
+  }, [activeRoom?.id, activeRoom?.capacity, activeRoom?.pricing.baseOccupancy]);
 
   useEffect(() => {
     if (!userProfile) return;
@@ -207,11 +210,12 @@ export default function GuestDashboard({
 
   // Check if dates are selected and calculate pricing
   let nightsCount = 0;
+  const nightlyPriceEstimation = getNightlyPriceForGuests(activeRoom, guestCount);
   let totalPriceEstimation = 0;
 
   if (checkIn && checkOut) {
     nightsCount = datesForRange(checkIn, checkOut).length;
-    totalPriceEstimation = nightsCount * activeRoom.pricePerNight;
+    totalPriceEstimation = nightsCount * nightlyPriceEstimation;
   }
 
   const getValidatedGuestContact = (): GuestContact | null => {
@@ -279,6 +283,12 @@ export default function GuestDashboard({
     setBookingLoading(true);
     setBookingError("");
 
+    if (guestCount < 1 || guestCount > activeRoom.capacity) {
+      setBookingError(`Selecciona entre 1 y ${activeRoom.capacity} huéspedes para continuar.`);
+      setBookingLoading(false);
+      return;
+    }
+
     const contact = getValidatedGuestContact();
     if (!contact) {
       setBookingLoading(false);
@@ -297,9 +307,11 @@ export default function GuestDashboard({
         userDisplayName: contact.fullName,
         userStatus: bookingProfile.isTemporary ? "temporary" : "registered",
         guestContact: contact,
+        guestCount,
         checkIn,
         checkOut,
         status: "confirmed",
+        nightlyPriceApplied: nightlyPriceEstimation,
         totalPrice: totalPriceEstimation,
         createdAt: serverTimestamp() as any
       };
@@ -444,7 +456,7 @@ export default function GuestDashboard({
           >
             {rooms.map((r) => (
               <option key={r.id} value={r.id}>
-                {r.name} (${r.pricePerNight.toLocaleString()} COP)
+                {r.name} (desde ${getRoomStartingPrice(r).toLocaleString()} COP)
               </option>
             ))}
           </select>
@@ -467,7 +479,7 @@ export default function GuestDashboard({
             className="w-full h-full object-cover object-center"
           />
           <div className="absolute top-2.5 right-2.5 bg-primary text-warm-bg text-[9px] px-2 py-0.5 rounded font-bold font-mono">
-            ${activeRoom.pricePerNight.toLocaleString()} COP / Noche
+            Desde ${getRoomStartingPrice(activeRoom).toLocaleString()} COP / Noche
           </div>
         </div>
         <div className="p-3 bg-warm-card">
@@ -487,6 +499,33 @@ export default function GuestDashboard({
                 <Users className="h-3.5 w-3.5 text-secondary" />
                 {activeRoom.capacity} huéspedes
               </span>
+            </div>
+          </div>
+          <div className="mt-3">
+            <span className="block text-[9px] font-bold uppercase tracking-wider text-dark-muted">Tarifa por ocupación</span>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {getOccupancyPriceOptions(activeRoom).map((option) => {
+                const isSelectedOccupancy = option.guestCount === guestCount;
+                return (
+                  <button
+                    key={option.guestCount}
+                    type="button"
+                    onClick={() => setGuestCount(option.guestCount)}
+                    className={`rounded-xl border px-3 py-2 text-left transition-colors ${
+                      isSelectedOccupancy
+                        ? "border-primary bg-primary/10"
+                        : "border-warm-border bg-white hover:border-secondary/40 hover:bg-white/80"
+                    }`}
+                  >
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-dark-muted">
+                      {option.guestCount} {option.guestCount === 1 ? "huésped" : "huéspedes"}
+                    </span>
+                    <span className="mt-1 block font-mono text-sm font-bold text-primary">
+                      ${option.nightlyPrice.toLocaleString()} COP / noche
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
           <div className="mt-3">
@@ -633,6 +672,52 @@ export default function GuestDashboard({
       )}
 
       {/* 3. Resumen de precios y Reserva buttons */}
+      <div className="bg-white border border-warm-border rounded-2xl p-4 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h4 className="font-display font-bold text-xs text-secondary uppercase tracking-wider">
+              Tarifa según ocupación
+            </h4>
+            <p className="mt-1 text-[11px] leading-5 text-dark-muted">
+              El valor cambia según la cantidad de huéspedes seleccionada.
+            </p>
+          </div>
+          <DollarSign className="h-5 w-5 text-secondary/70" />
+        </div>
+
+        <div>
+          <label htmlFor="guest-count" className="mb-2 block text-[11px] font-bold uppercase tracking-[0.12em] text-dark-muted">
+            Cantidad de huéspedes
+          </label>
+          <select
+            id="guest-count"
+            value={guestCount}
+            onChange={(e) => setGuestCount(Number(e.target.value))}
+            className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 text-sm font-semibold text-dark"
+          >
+            {getOccupancyPriceOptions(activeRoom).map((option) => (
+              <option key={option.guestCount} value={option.guestCount}>
+                {option.guestCount} {option.guestCount === 1 ? "huésped" : "huéspedes"} - ${option.nightlyPrice.toLocaleString()} COP / noche
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="rounded-xl border border-secondary/20 bg-secondary/10 p-3">
+          <div className="flex justify-between gap-3 text-xs">
+            <span className="font-medium text-dark-muted">Tarifa activa</span>
+            <span className="font-mono font-bold text-primary">${nightlyPriceEstimation.toLocaleString()} COP / noche</span>
+          </div>
+          <p className="mt-2 text-[11px] leading-5 text-dark-muted">
+            Base para {activeRoom.pricing.baseOccupancy} {activeRoom.pricing.baseOccupancy === 1 ? "huésped" : "huéspedes"}:
+            {" "}
+            ${activeRoom.pricing.basePricePerNight.toLocaleString()} COP. Cada huésped adicional suma
+            {" "}
+            ${activeRoom.pricing.extraGuestPricePerNight.toLocaleString()} COP por noche.
+          </p>
+        </div>
+      </div>
+
       {checkIn && checkOut ? (
         <div className="bg-primary/5 border border-primary/20 rounded-2xl p-4 space-y-3 shadow-inner">
           <h4 className="font-display font-bold text-xs text-secondary uppercase tracking-wider">
@@ -650,6 +735,14 @@ export default function GuestDashboard({
           <div className="flex justify-between items-center text-xs">
             <div className="text-dark-muted font-medium">Estadía</div>
             <div className="font-bold text-dark">{nightsCount} {nightsCount > 1 ? "noches" : "noche"}</div>
+          </div>
+          <div className="flex justify-between items-center text-xs">
+            <div className="text-dark-muted font-medium">Huéspedes</div>
+            <div className="font-bold text-dark">{guestCount}</div>
+          </div>
+          <div className="flex justify-between items-center text-xs">
+            <div className="text-dark-muted font-medium">Tarifa por noche</div>
+            <div className="font-bold text-dark">${nightlyPriceEstimation.toLocaleString()} COP</div>
           </div>
 
           <div className="h-px bg-warm-border"></div>
@@ -734,7 +827,10 @@ export default function GuestDashboard({
         ) : (
           <div className="space-y-3">
             {myBookings.map((b) => {
-              const rDetails = rooms.find(rm => rm.id === b.roomId) || { name: "Apartamento" };
+              const bookingRoom = rooms.find(rm => rm.id === b.roomId) || null;
+              const fallbackNightlyPrice = bookingRoom
+                ? getNightlyPriceForGuests(bookingRoom, b.guestCount || 1)
+                : 0;
               return (
                 <div 
                   key={b.id} 
@@ -744,7 +840,7 @@ export default function GuestDashboard({
                 >
                   <div className="flex justify-between items-start">
                     <div>
-                      <h4 className="font-bold text-xs text-dark">{rDetails.name}</h4>
+                      <h4 className="font-bold text-xs text-dark">{bookingRoom?.name || "Apartamento"}</h4>
                       <code className="text-[8px] text-dark-muted font-mono">ID: {b.id.toUpperCase()}</code>
                     </div>
                     <span className={`text-[8px] font-mono font-bold uppercase px-2 py-0.5 rounded ${
@@ -762,6 +858,19 @@ export default function GuestDashboard({
                     <div>
                       <span className="text-[8px] text-dark-muted uppercase font-bold block leading-none">Check-Out</span>
                       <span className="font-bold block mt-0.5">{b.checkOut}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 text-[10px] bg-warm-card p-2 rounded-lg text-dark border border-warm-border">
+                    <div>
+                      <span className="text-[8px] text-dark-muted uppercase font-bold block leading-none">Huéspedes</span>
+                      <span className="font-bold block mt-0.5">{b.guestCount || 1}</span>
+                    </div>
+                    <div>
+                      <span className="text-[8px] text-dark-muted uppercase font-bold block leading-none">Tarifa noche</span>
+                      <span className="font-bold block mt-0.5">
+                        ${typeof b.nightlyPriceApplied === "number" ? b.nightlyPriceApplied.toLocaleString() : fallbackNightlyPrice.toLocaleString()} COP
+                      </span>
                     </div>
                   </div>
 
@@ -822,6 +931,14 @@ export default function GuestDashboard({
               <div className="py-1.5 flex justify-between">
                 <span className="text-dark-muted font-medium">Check-Out</span>
                 <span className="font-bold text-dark">{successBooking.checkOut}</span>
+              </div>
+              <div className="py-1.5 flex justify-between">
+                <span className="text-dark-muted font-medium">Huéspedes</span>
+                <span className="font-bold text-dark">{successBooking.guestCount}</span>
+              </div>
+              <div className="py-1.5 flex justify-between">
+                <span className="text-dark-muted font-medium">Tarifa por noche</span>
+                <span className="font-bold text-dark">${successBooking.nightlyPriceApplied.toLocaleString()} COP</span>
               </div>
               <div className="py-1.5 flex justify-between">
                 <span className="text-dark-muted font-medium">Total Pagado</span>

@@ -76,7 +76,10 @@ service cloud.firestore {
       return data.name is string && data.name.size() <= 150
         && data.description is string && data.description.size() <= 3000
         && data.capacity is int && data.capacity >= 1 && data.capacity <= 30
-        && data.pricePerNight is number && data.pricePerNight > 0
+        && data.pricing is map
+        && data.pricing.baseOccupancy is int && data.pricing.baseOccupancy >= 1 && data.pricing.baseOccupancy <= data.capacity
+        && data.pricing.basePricePerNight is number && data.pricing.basePricePerNight > 0
+        && data.pricing.extraGuestPricePerNight is number && data.pricing.extraGuestPricePerNight >= 0
         && (
           !data.keys().hasAny(['features']) ||
           (
@@ -109,6 +112,8 @@ service cloud.firestore {
         && hasOptionalString(data, 'userEmail', 200)
         && hasOptionalString(data, 'userDisplayName', 150)
         && (!data.keys().hasAny(['userStatus']) || data.userStatus == 'temporary' || data.userStatus == 'registered')
+        && data.guestCount is int && data.guestCount >= 1
+        && data.nightlyPriceApplied is number && data.nightlyPriceApplied > 0
         && data.checkIn is string && data.checkIn.size() == 10
         && data.checkOut is string && data.checkOut.size() == 10
         && (data.status == 'confirmed' || data.status == 'cancelled')
@@ -194,7 +199,8 @@ service cloud.firestore {
       allow create: if isSignedIn() 
         && isValidBooking(request.resource.data) 
         && isValidId(bookingId)
-        && exists(/databases/$(database)/documents/rooms/$(request.resource.data.roomId));
+        && exists(/databases/$(database)/documents/rooms/$(request.resource.data.roomId))
+        && request.resource.data.guestCount <= get(/databases/$(database)/documents/rooms/$(request.resource.data.roomId)).data.capacity;
       allow update: if isSignedIn() && (
         // Guests can cancel their own bookings
         (resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) && request.resource.data.status == 'cancelled')

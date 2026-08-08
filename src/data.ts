@@ -1,4 +1,4 @@
-import { FaqItem, NearbyPlace, PublicContent, PublicPolicies, Room, RoomFeatures } from "./types";
+import { FaqItem, NearbyPlace, PublicContent, PublicPolicies, Room, RoomFeatures, RoomPricing } from "./types";
 
 export const DEFAULT_LOGO_PLACEHOLDER =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='64' fill='%23E5E7EB'/%3E%3Ccircle cx='64' cy='46' r='20' fill='%239CA3AF'/%3E%3Cpath d='M32 104c4-18 18-30 32-30s28 12 32 30' fill='%239CA3AF'/%3E%3C/svg%3E";
@@ -27,6 +27,10 @@ function asPositiveInt(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
 }
 
+function asNonNegativeNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
 function asBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
@@ -37,13 +41,24 @@ export function normalizeRoom(raw: unknown, id: string): Room {
   const rawFeatures = input.features && typeof input.features === "object"
     ? input.features as Record<string, unknown>
     : {};
+  const capacity = asPositiveInt(input.capacity, 1);
+  const legacyPricePerNight = asNonNegativeNumber(input.pricePerNight, 0);
+  const rawPricing = input.pricing && typeof input.pricing === "object"
+    ? input.pricing as Record<string, unknown>
+    : {};
+  const baseOccupancy = Math.min(asPositiveInt(rawPricing.baseOccupancy, 1), capacity);
+  const pricing: RoomPricing = {
+    baseOccupancy,
+    basePricePerNight: asNonNegativeNumber(rawPricing.basePricePerNight, legacyPricePerNight),
+    extraGuestPricePerNight: asNonNegativeNumber(rawPricing.extraGuestPricePerNight, 0),
+  };
 
   return {
     id,
     name: typeof input.name === "string" ? input.name : "Apartamento",
     description: typeof input.description === "string" ? input.description : "",
-    capacity: asPositiveInt(input.capacity, 1),
-    pricePerNight: typeof input.pricePerNight === "number" && input.pricePerNight > 0 ? input.pricePerNight : 0,
+    capacity,
+    pricing,
     features: {
       bedrooms: asPositiveInt(rawFeatures.bedrooms, defaults.bedrooms),
       beds: asPositiveInt(rawFeatures.beds, defaults.beds),

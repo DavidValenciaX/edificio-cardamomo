@@ -27,12 +27,18 @@ export interface RoomFeatures {
   hasPrivateBathroom: boolean;
 }
 
+export interface RoomPricing {
+  baseOccupancy: number;
+  basePricePerNight: number;
+  extraGuestPricePerNight: number;
+}
+
 export interface Room {
   id: string;
   name: string;
   description: string;
   capacity: number;
-  pricePerNight: number;
+  pricing: RoomPricing;
   features: RoomFeatures;
   images: string[];
   blockedDates: string[]; // Formato YYYY-MM-DD
@@ -90,9 +96,11 @@ export interface Booking {
   userDisplayName?: string;
   userStatus?: 'temporary' | 'registered';
   guestContact: GuestContact;
+  guestCount: number;
   checkIn: string; // Formato YYYY-MM-DD
   checkOut: string; // Formato YYYY-MM-DD
   status: 'confirmed' | 'cancelled';
+  nightlyPriceApplied: number;
   totalPrice: number;
   createdAt: string | Timestamp;
 }
