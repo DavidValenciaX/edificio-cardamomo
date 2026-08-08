@@ -345,7 +345,7 @@ app.post("/api/consolidate-temporary-user", async (req, res) => {
 // -------------------------------------------------------------
 // 1. ENDPOINT: Expose the complete blocked-date projection as an iCal feed
 // -------------------------------------------------------------
-app.get("/api/rooms/:roomId/ical", async (req, res) => {
+async function serveRoomICal(req: express.Request, res: express.Response) {
   const { roomId } = req.params;
   try {
     console.log(`Generating iCal feed for room: ${roomId}`);
@@ -371,7 +371,12 @@ app.get("/api/rooms/:roomId/ical", async (req, res) => {
     console.error("Error generating iCal feed:", error);
     return res.status(500).send("Error generating calendar.");
   }
-});
+}
+
+// The .ics suffix is required by Airbnb and Booking.com validators. Keep the
+// legacy route working for links already copied before this correction.
+app.get("/api/rooms/:roomId/ical.ics", serveRoomICal);
+app.get("/api/rooms/:roomId/ical", serveRoomICal);
 
 // -------------------------------------------------------------------------
 // 1b. ENDPOINT: Rebuild availability after an authenticated guest cancellation

@@ -1217,7 +1217,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                     <div className="rounded-2xl border border-secondary/25 bg-secondary/10 p-4 text-sm leading-6 text-dark">
                       <span className="font-bold text-secondary">Canal iCal exportable del hotel</span>
                       <p className="mt-1">Usa esta URL para publicar la disponibilidad del apartamento:</p>
-                      <code className="mt-3 block break-all rounded-xl border border-warm-border bg-white p-3 font-mono text-xs font-bold text-secondary">{getPublicApiOrigin()}/api/rooms/{editingRoom.id}/ical</code>
+                      <code className="mt-3 block break-all rounded-xl border border-warm-border bg-white p-3 font-mono text-xs font-bold text-secondary">{getPublicApiOrigin()}/api/rooms/{editingRoom.id}/ical.ics</code>
                     </div>
                   )}
 

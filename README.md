@@ -87,5 +87,5 @@ Los workflows reutilizan algunos secretos compartidos para no duplicarlos en Git
 - `POST /api/sync-ical` acepta dos formas de autenticación:
   - Bearer token Firebase de un administrador para el disparo manual desde la UI.
   - Bearer token OIDC de Cloud Scheduler validado con `CLOUD_SCHEDULER_OIDC_AUDIENCE` y `CLOUD_SCHEDULER_OIDC_EMAIL`.
-- El endpoint `GET /api/rooms/:roomId/ical` exporta la proyección completa de fechas bloqueadas del apartamento, incluyendo reservas directas y fechas importadas desde Airbnb/Booking, para pegarla en ambas plataformas.
+- El endpoint `GET /api/rooms/:roomId/ical.ics` exporta la proyección completa de fechas bloqueadas del apartamento, incluyendo reservas directas y fechas importadas desde Airbnb/Booking, para pegarla en ambas plataformas. La ruta anterior `/ical` se conserva como alias de compatibilidad.
 - Después de cancelar una reserva, el frontend llama a `POST /api/rooms/:roomId/rebuild-availability` con el token del huésped; el backend verifica que la reserva le pertenezca y reconstruye `blockedDates` sin exponer las reservas de otros huéspedes.

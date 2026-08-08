@@ -202,4 +202,5 @@ test("buildICalContent exports the complete blocked-date projection", () => {
     "2026-11-13",
   ]);
   assert.match(feed, /X-WR-CALNAME:Cardamomo - Apartamento 101/);
+  assert.match(feed, /DTSTAMP:\d{8}T\d{6}Z/);
 });

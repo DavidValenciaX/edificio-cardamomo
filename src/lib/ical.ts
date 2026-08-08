@@ -176,7 +176,9 @@ function groupConsecutiveDates(dates: string[]): { start: string; end: string }[
 }
 
 function toICalStamp(date: Date): string {
-  return date.toISOString().replace(/[-:T]/g, "").slice(0, 15) + "Z";
+  return date.toISOString()
+    .replace(/\.\d{3}Z$/, "Z")
+    .replace(/[-:]/g, "");
 }
 
 /** Build a read-only feed from the room's complete blocked-date projection. */
