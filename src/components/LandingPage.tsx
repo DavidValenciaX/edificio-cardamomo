@@ -199,7 +199,7 @@ export default function LandingPage({
                     <div>
                       <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Edificio Cardamomo · Neiva</p>
                       <h3 className="mt-2 truncate font-display text-2xl font-semibold text-dark">{room.name}</h3>
-                      <p className="mt-3 line-clamp-3 text-sm leading-6 text-dark-muted">{room.description}</p>
+                      <p className="mt-3 whitespace-pre-line text-sm leading-6 text-dark-muted">{room.description}</p>
                       <div className="mt-4 flex flex-wrap gap-2">
                         {getRoomFeatureLabels(room).slice(0, 5).map((label) => (
                           <span key={label} className="rounded-full border border-warm-border bg-warm-card px-3 py-1 text-xs font-semibold text-dark-muted">

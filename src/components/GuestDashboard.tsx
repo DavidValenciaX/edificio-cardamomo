@@ -16,8 +16,8 @@ import { auth, db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { getApiUrl } from "../lib/api";
 import { datesForRange } from "../lib/ical";
 import { getNightlyPriceForGuests, getOccupancyPriceOptions, getRoomStartingPrice } from "../lib/pricing";
-import { DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 import { Room, Booking, UserProfile, GuestContact } from "../types";
+import RoomImageGallery from "./RoomImageGallery";
 import { Calendar as CalendarIcon, Check, Users, DollarSign, ArrowLeft, ArrowRight, ShieldCheck, Info, X } from "lucide-react";
 
 interface GuestDashboardProps {
@@ -471,12 +471,12 @@ export default function GuestDashboard({
 
       {/* Hero apartment visual details */}
       <div className="bg-white border border-warm-border rounded-2xl overflow-hidden shadow-sm">
-        <div className="relative aspect-[16/10] sm:aspect-[3/2] bg-warm-card">
-          <img
-            src={activeRoom.images[0] || DEFAULT_ROOM_IMAGE_PLACEHOLDER}
-            alt={activeRoom.name}
-            referrerPolicy="no-referrer"
-            className="w-full h-full object-cover object-center"
+        <div className="relative">
+          <RoomImageGallery
+            roomId={activeRoom.id}
+            roomName={activeRoom.name}
+            images={activeRoom.images}
+            className="rounded-t-2xl"
           />
           <div className="absolute top-2.5 right-2.5 bg-primary text-warm-bg text-[9px] px-2 py-0.5 rounded font-bold font-mono">
             Desde ${getRoomStartingPrice(activeRoom).toLocaleString()} COP / Noche
@@ -484,6 +484,11 @@ export default function GuestDashboard({
         </div>
         <div className="p-3 bg-warm-card">
           <h3 className="font-bold text-xs text-dark">{activeRoom.name}</h3>
+          {activeRoom.description && (
+            <p className="mt-3 whitespace-pre-line text-sm leading-6 text-dark-muted">
+              {activeRoom.description}
+            </p>
+          )}
           <div className="mt-3 grid gap-2 sm:grid-cols-3">
             <div className="rounded-xl border border-warm-border bg-white px-3 py-2">
               <span className="block text-[9px] font-bold uppercase tracking-wider text-dark-muted">Habitaciones</span>

@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent, ChangeEvent } from "react";
+import { useState, useEffect, FormEvent, ChangeEvent, type DragEvent } from "react";
 import { 
   collection, 
   getDocs, 
@@ -13,23 +13,29 @@ import { auth, db, handleFirestoreError, OperationType, storage } from "../lib/f
 import { getApiUrl, getPublicApiOrigin } from "../lib/api";
 import { buildDefaultRoomFeatures, DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 import { getOccupancyPriceOptions, getRoomStartingPrice } from "../lib/pricing";
-import { PublicContent, Room, RoomFeatures, RoomIntegration, Settings } from "../types";
+import { buildAvailabilityDateSets, formatAvailabilityDate, getAvailabilityStatus, getBookingsForDate, getCalendarDays, type AvailabilityStatus } from "../lib/availability";
+import { Booking, PublicContent, Room, RoomFeatures, RoomIntegration, Settings } from "../types";
 import PublicContentEditor from "./PublicContentEditor";
 import {
   Bell,
   CalendarDays,
   CheckCircle,
+  ChevronLeft,
   ChevronRight,
+  GripVertical,
   Edit2,
   FileText,
   Home,
   LayoutDashboard,
+  MoveDown,
+  MoveUp,
   Palette,
   Plus,
   RefreshCw,
   Save,
   Settings2,
   Trash2,
+  UserRound,
   type LucideIcon,
 } from "lucide-react";
 
@@ -117,6 +123,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
   const [roomImages, setRoomImages] = useState<string[]>([]);
   const [originalRoomImages, setOriginalRoomImages] = useState<string[]>([]);
   const [pendingRoomImageDeletes, setPendingRoomImageDeletes] = useState<string[]>([]);
+  const [draggedImageIndex, setDraggedImageIndex] = useState<number | null>(null);
   const [airbnbUrl, setAirbnbUrl] = useState("");
   const [bookingUrl, setBookingUrl] = useState("");
   const [blockedDates, setBlockedDates] = useState<string[]>([]);
@@ -124,6 +131,15 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
   // Manual blockers scheduler
   const [blockerRoomId, setBlockerRoomId] = useState("");
   const [manualBlockDate, setManualBlockDate] = useState("");
+
+  // Administrative availability calendar
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loadingBookings, setLoadingBookings] = useState(false);
+  const [bookingLoadError, setBookingLoadError] = useState("");
+  const [availabilityRoomId, setAvailabilityRoomId] = useState("");
+  const [availabilityMonth, setAvailabilityMonth] = useState(() => new Date().getMonth());
+  const [availabilityYear, setAvailabilityYear] = useState(() => new Date().getFullYear());
+  const [selectedAvailabilityDate, setSelectedAvailabilityDate] = useState("");
 
   // Sync state
   const [syncLoading, setSyncLoading] = useState(false);
@@ -162,6 +178,25 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
     } catch (error) {
       console.error("Error fetching room integrations:", error);
       setRoomIntegrations({});
+    }
+  };
+
+  const fetchBookings = async () => {
+    setLoadingBookings(true);
+    setBookingLoadError("");
+
+    try {
+      const snap = await getDocs(collection(db, "bookings"));
+      const nextBookings = snap.docs
+        .map((bookingDoc) => ({ id: bookingDoc.id, ...bookingDoc.data() } as Booking))
+        .sort((firstBooking, secondBooking) => firstBooking.checkIn.localeCompare(secondBooking.checkIn));
+      setBookings(nextBookings);
+    } catch (error) {
+      console.error("Error fetching bookings for admin calendar:", error);
+      setBookings([]);
+      setBookingLoadError("No se pudieron cargar las reservas. Actualiza la página e inténtalo de nuevo.");
+    } finally {
+      setLoadingBookings(false);
     }
   };
 
@@ -329,10 +364,25 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
   useEffect(() => {
     void fetchGlobalSettings();
     void fetchRoomIntegrations();
-    if (rooms.length > 0) {
-      setBlockerRoomId(rooms[0].id);
+    if (rooms.length === 0) {
+      setBlockerRoomId("");
+      setAvailabilityRoomId("");
+      return;
     }
+
+    setBlockerRoomId((currentRoomId) => (
+      rooms.some((room) => room.id === currentRoomId) ? currentRoomId : rooms[0].id
+    ));
+    setAvailabilityRoomId((currentRoomId) => (
+      rooms.some((room) => room.id === currentRoomId) ? currentRoomId : rooms[0].id
+    ));
   }, [rooms]);
+
+  useEffect(() => {
+    if (activeSection === "availability") {
+      void fetchBookings();
+    }
+  }, [activeSection]);
 
   // Handle iCal Manual sync triggering
   const triggerManualICalSync = async () => {
@@ -571,6 +621,37 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
     }
   };
 
+  const moveRoomImage = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= roomImages.length || toIndex >= roomImages.length) {
+      return;
+    }
+
+    setRoomImages((currentImages) => {
+      const nextImages = [...currentImages];
+      const [movedImage] = nextImages.splice(fromIndex, 1);
+      nextImages.splice(toIndex, 0, movedImage);
+      return nextImages;
+    });
+  };
+
+  const handleRoomImageDragStart = (event: DragEvent<HTMLDivElement>, index: number) => {
+    setDraggedImageIndex(index);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(index));
+  };
+
+  const handleRoomImageDrop = (event: DragEvent<HTMLDivElement>, targetIndex: number) => {
+    event.preventDefault();
+    const dataTransferIndex = Number.parseInt(event.dataTransfer.getData("text/plain"), 10);
+    const sourceIndex = draggedImageIndex ?? dataTransferIndex;
+
+    if (Number.isInteger(sourceIndex)) {
+      moveRoomImage(sourceIndex, targetIndex);
+    }
+
+    setDraggedImageIndex(null);
+  };
+
   const handleRemoveImage = (idx: number) => {
     const imageToRemove = roomImages[idx];
     setRoomImages(roomImages.filter((_, i) => i !== idx));
@@ -655,6 +736,44 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
         blockedDates,
       })
     : [];
+
+  const availabilityRoom = rooms.find((room) => room.id === availabilityRoomId) || rooms[0] || null;
+  const availabilityBookings = availabilityRoom
+    ? bookings.filter((booking) => booking.roomId === availabilityRoom.id)
+    : [];
+  const confirmedAvailabilityBookings = availabilityBookings.filter((booking) => booking.status === "confirmed");
+  const availabilityDateSets = availabilityRoom
+    ? buildAvailabilityDateSets(availabilityRoom, confirmedAvailabilityBookings)
+    : { reservedDates: new Set<string>(), blockedDates: new Set<string>() };
+  const availabilityCalendarDays = getCalendarDays(availabilityMonth, availabilityYear);
+  const selectedDateBookings = selectedAvailabilityDate
+    ? getBookingsForDate(selectedAvailabilityDate, confirmedAvailabilityBookings)
+    : [];
+  const selectedDateStatus: AvailabilityStatus | null = selectedAvailabilityDate
+    ? getAvailabilityStatus(selectedAvailabilityDate, availabilityDateSets)
+    : null;
+  const availabilityMonthNames = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+  ];
+
+  const changeAvailabilityMonth = (offset: number) => {
+    const nextMonth = new Date(availabilityYear, availabilityMonth + offset, 1);
+    setAvailabilityMonth(nextMonth.getMonth());
+    setAvailabilityYear(nextMonth.getFullYear());
+    setSelectedAvailabilityDate("");
+  };
+
+  const getBookingGuestName = (booking: Booking): string => {
+    return booking.guestContact?.fullName || booking.userDisplayName || "Huésped sin nombre";
+  };
+
+  const getCalendarCellLabel = (dateStr: string, status: AvailabilityStatus): string => {
+    const dateLabel = formatAvailabilityDate(dateStr);
+    if (status === "reserved") return `${dateLabel}: reservada`;
+    if (status === "blocked") return `${dateLabel}: bloqueada`;
+    return `${dateLabel}: disponible`;
+  };
 
   return (
     <div className="mx-auto w-full max-w-[1440px] py-6 lg:py-10">
@@ -976,7 +1095,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <h4 className="font-display text-xl font-semibold text-dark">Fotos del apartamento</h4>
-                        <p className="mt-1 max-w-xl text-sm leading-6 text-dark-muted">Sube imágenes reales a Firebase Storage. Puedes cargar hasta 10 fotos.</p>
+                        <p className="mt-1 max-w-xl text-sm leading-6 text-dark-muted">Sube hasta 10 fotos. La primera será la portada pública; arrástralas o usa los botones para cambiar el orden.</p>
                       </div>
                       <label className="inline-flex min-h-11 shrink-0 cursor-pointer items-center justify-center rounded-full bg-secondary px-4 text-sm font-bold text-warm-bg transition-colors hover:bg-secondary-hover">
                         {uploadingRoomImages ? "Subiendo…" : "Subir fotos"}
@@ -984,12 +1103,56 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                       </label>
                     </div>
                     {roomImagesUploadError && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{roomImagesUploadError}</p>}
-                    <div className="mt-5 flex gap-3 overflow-x-auto pb-1">
+                    <div className="mt-5 flex gap-3 overflow-x-auto pb-2">
                       {roomImages.length === 0 && <div className="w-full rounded-2xl border border-dashed border-warm-border bg-white px-4 py-8 text-center text-sm text-dark-muted">Aún no has subido fotos.</div>}
                       {roomImages.map((img, idx) => (
-                        <div key={idx} className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-warm-border bg-white">
-                        <img src={img} alt={`Foto ${idx + 1} del apartamento`} referrerPolicy="no-referrer" width={96} height={96} className="h-full w-full object-cover" />
-                          <button type="button" onClick={() => handleRemoveImage(idx)} className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-red-700 text-sm font-bold text-white shadow-sm" aria-label={`Quitar foto ${idx + 1}`}>×</button>
+                        <div
+                          key={`${img}-${idx}`}
+                          draggable
+                          onDragStart={(event) => handleRoomImageDragStart(event, idx)}
+                          onDragOver={(event) => event.preventDefault()}
+                          onDrop={(event) => handleRoomImageDrop(event, idx)}
+                          onDragEnd={() => setDraggedImageIndex(null)}
+                          className={`w-40 shrink-0 overflow-hidden rounded-2xl border bg-white shadow-sm transition-opacity ${draggedImageIndex === idx ? "border-primary opacity-50" : "border-warm-border"}`}
+                        >
+                          <div className="relative aspect-square bg-warm-card">
+                            <img src={img} alt={`Foto ${idx + 1} del apartamento`} referrerPolicy="no-referrer" width={160} height={160} className="h-full w-full object-cover" />
+                          </div>
+                          <div className="flex items-center justify-between gap-2 border-b border-warm-border px-3 py-2">
+                            <span className="flex min-w-0 items-center gap-1.5 text-xs font-bold text-dark">
+                              <GripVertical className="h-4 w-4 shrink-0 text-secondary" aria-hidden="true" />
+                              <span className="truncate">Foto {idx + 1}</span>
+                            </span>
+                            {idx === 0 && <span className="shrink-0 rounded-full bg-primary/10 px-2 py-1 text-[10px] font-bold text-primary">Principal</span>}
+                          </div>
+                          <div className="flex gap-1 p-2">
+                            <button
+                              type="button"
+                              onClick={() => moveRoomImage(idx, idx - 1)}
+                              disabled={idx === 0}
+                              className="flex min-h-11 min-w-11 flex-1 items-center justify-center rounded-xl border border-warm-border text-secondary transition-colors hover:bg-warm-card disabled:cursor-not-allowed disabled:opacity-35"
+                              aria-label={`Mover foto ${idx + 1} hacia arriba`}
+                            >
+                              <MoveUp className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveRoomImage(idx, idx + 1)}
+                              disabled={idx === roomImages.length - 1}
+                              className="flex min-h-11 min-w-11 flex-1 items-center justify-center rounded-xl border border-warm-border text-secondary transition-colors hover:bg-warm-card disabled:cursor-not-allowed disabled:opacity-35"
+                              aria-label={`Mover foto ${idx + 1} hacia abajo`}
+                            >
+                              <MoveDown className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(idx)}
+                              className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-red-200 text-red-700 transition-colors hover:bg-red-50"
+                              aria-label={`Quitar foto ${idx + 1}`}
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1043,6 +1206,194 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                     </button>
                   </div>
                   {syncFeedback && <div role="status" aria-live="polite" className="mt-5 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800"><CheckCircle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" /><span>{syncFeedback}</span></div>}
+                </section>
+
+                <section className="rounded-3xl border border-warm-border bg-white p-6 shadow-sm" aria-labelledby="availability-calendar-title">
+                  <div className="flex flex-col gap-4 border-b border-warm-border pb-5 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Reservas y bloqueos</p>
+                      <h3 id="availability-calendar-title" className="mt-2 font-display text-2xl font-semibold text-dark">Calendario por apartamento</h3>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-dark-muted">Consulta las noches reservadas y las fechas bloqueadas en el mismo calendario. Selecciona una fecha para ver su detalle.</p>
+                    </div>
+                    <div className="w-full lg:max-w-xs">
+                      <label htmlFor="availability-room-id" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Apartamento</label>
+                      <select
+                        id="availability-room-id"
+                        value={availabilityRoomId}
+                        onChange={(event) => {
+                          setAvailabilityRoomId(event.target.value);
+                          setSelectedAvailabilityDate("");
+                        }}
+                        disabled={rooms.length === 0}
+                        className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 text-sm font-semibold text-dark disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {rooms.length === 0 && <option value="">Sin apartamentos</option>}
+                        {rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  {loadingBookings ? (
+                    <div className="mt-6 flex items-center gap-3 rounded-2xl border border-warm-border bg-warm-card/60 p-4 text-sm font-semibold text-dark-muted" role="status" aria-live="polite">
+                      <RefreshCw className="h-4 w-4 animate-spin text-primary" aria-hidden="true" />
+                      Cargando reservas…
+                    </div>
+                  ) : bookingLoadError ? (
+                    <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-800" role="alert">
+                      {bookingLoadError}
+                    </div>
+                  ) : !availabilityRoom ? (
+                    <div className="mt-6 rounded-2xl border border-dashed border-warm-border bg-warm-card/60 p-8 text-center text-sm text-dark-muted">
+                      Crea un apartamento para comenzar a consultar disponibilidad.
+                    </div>
+                  ) : (
+                    <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(16rem,0.9fr)]">
+                      <div>
+                        <div className="flex items-center justify-between gap-3 rounded-2xl border border-warm-border bg-warm-card/60 px-3 py-3">
+                          <button
+                            type="button"
+                            onClick={() => changeAvailabilityMonth(-1)}
+                            aria-label="Ver mes anterior"
+                            className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-warm-border bg-white text-secondary transition-colors hover:bg-warm-card"
+                          >
+                            <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                          </button>
+                          <div className="text-center">
+                            <p className="font-display text-xl font-semibold text-dark">{availabilityMonthNames[availabilityMonth]} {availabilityYear}</p>
+                            <p className="mt-1 text-xs font-medium text-dark-muted">{confirmedAvailabilityBookings.length} reservas confirmadas</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => changeAvailabilityMonth(1)}
+                            aria-label="Ver mes siguiente"
+                            className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-warm-border bg-white text-secondary transition-colors hover:bg-warm-card"
+                          >
+                            <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                          </button>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase tracking-wide text-dark-muted">
+                          <span>Dom</span>
+                          <span>Lun</span>
+                          <span>Mar</span>
+                          <span>Mié</span>
+                          <span>Jue</span>
+                          <span>Vie</span>
+                          <span>Sáb</span>
+                        </div>
+
+                        <div className="mt-2 grid grid-cols-7 gap-1">
+                          {availabilityCalendarDays.map((day, index) => {
+                            const status = day.dateStr ? getAvailabilityStatus(day.dateStr, availabilityDateSets) : null;
+                            const isSelected = day.dateStr === selectedAvailabilityDate;
+
+                            return (
+                              <button
+                                key={`${day.dateStr || "outside"}-${index}`}
+                                type="button"
+                                disabled={!day.isCurrentMonth}
+                                aria-label={status && day.dateStr ? getCalendarCellLabel(day.dateStr, status) : undefined}
+                                aria-pressed={isSelected}
+                                onClick={() => {
+                                  if (day.dateStr) setSelectedAvailabilityDate(day.dateStr);
+                                }}
+                                className={`relative flex min-h-11 w-full flex-col items-center justify-center rounded-xl border text-sm font-semibold transition-colors focus-visible:z-10 ${
+                                  !day.isCurrentMonth
+                                    ? "pointer-events-none border-transparent bg-transparent text-transparent"
+                                    : status === "reserved"
+                                      ? "border-primary/40 bg-primary/15 text-dark hover:bg-primary/25"
+                                      : status === "blocked"
+                                        ? "border-danger/35 bg-danger/10 text-danger hover:bg-danger/15"
+                                        : "border-warm-border bg-warm-card text-dark hover:bg-warm-border"
+                                } ${isSelected ? "ring-2 ring-secondary ring-offset-2" : ""}`}
+                              >
+                                <span>{day.dayNum}</span>
+                                {status === "reserved" && <span className="mt-0.5 rounded-full bg-primary px-1.5 text-[9px] font-bold leading-4 text-warm-bg">R</span>}
+                                {status === "blocked" && <span className="mt-0.5 rounded-full bg-danger px-1.5 text-[9px] font-bold leading-4 text-white">B</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 border-t border-warm-border pt-4 text-xs font-semibold text-dark-muted">
+                          <span className="inline-flex items-center gap-2"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-warm-bg">R</span> Reservada</span>
+                          <span className="inline-flex items-center gap-2"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-danger text-[9px] font-bold text-white">B</span> Bloqueada</span>
+                          <span className="inline-flex items-center gap-2"><span className="h-5 w-5 rounded-xl border border-warm-border bg-warm-card" /> Disponible</span>
+                        </div>
+                      </div>
+
+                      <aside className="rounded-2xl border border-warm-border bg-warm-card/60 p-4" aria-live="polite">
+                        <div className="flex items-start gap-3">
+                          <CalendarDays className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-[0.14em] text-secondary">Detalle de fecha</p>
+                            <h4 className="mt-1 font-display text-xl font-semibold text-dark">
+                              {selectedAvailabilityDate ? formatAvailabilityDate(selectedAvailabilityDate) : "Selecciona un día"}
+                            </h4>
+                          </div>
+                        </div>
+
+                        {!selectedAvailabilityDate ? (
+                          <p className="mt-4 text-sm leading-6 text-dark-muted">Selecciona una fecha del calendario para consultar si está disponible, reservada o bloqueada.</p>
+                        ) : selectedDateBookings.length > 0 ? (
+                          <div className="mt-4 space-y-3">
+                            {selectedDateBookings.map((booking) => (
+                              <div key={booking.id} className="rounded-xl border border-primary/25 bg-white p-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="text-xs font-bold uppercase tracking-wide text-primary">Reserva confirmada</p>
+                                    <p className="mt-1 text-sm font-bold text-dark">{getBookingGuestName(booking)}</p>
+                                  </div>
+                                  <span className="font-mono text-[10px] font-bold text-dark-muted">{booking.id.toUpperCase()}</span>
+                                </div>
+                                <p className="mt-3 text-xs leading-5 text-dark-muted">
+                                  {formatAvailabilityDate(booking.checkIn)} – {formatAvailabilityDate(booking.checkOut)} · {booking.guestCount} {booking.guestCount === 1 ? "huésped" : "huéspedes"}
+                                </p>
+                                <p className="mt-2 font-mono text-sm font-bold text-primary">${booking.totalPrice.toLocaleString()} COP</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : selectedDateStatus === "blocked" ? (
+                          <div className="mt-4 rounded-xl border border-danger/25 bg-danger/10 p-3 text-sm leading-6 text-danger">
+                            Esta fecha está bloqueada y no tiene una reserva local confirmada asociada. Puede corresponder a mantenimiento o a una fuente iCal.
+                          </div>
+                        ) : (
+                          <div className="mt-4 rounded-xl border border-warm-border bg-white p-3 text-sm leading-6 text-dark-muted">
+                            Esta fecha está disponible para el apartamento seleccionado.
+                          </div>
+                        )}
+
+                        <div className="mt-5 border-t border-warm-border pt-4">
+                          <div className="flex items-center gap-2">
+                            <UserRound className="h-4 w-4 text-secondary" aria-hidden="true" />
+                            <h4 className="text-sm font-bold text-dark">Reservas del apartamento</h4>
+                          </div>
+                          {availabilityBookings.length === 0 ? (
+                            <p className="mt-3 text-xs leading-5 text-dark-muted">No hay reservas registradas para este apartamento.</p>
+                          ) : (
+                            <div className="mt-3 max-h-64 space-y-2 overflow-y-auto pr-1">
+                              {availabilityBookings.map((booking) => (
+                                <button
+                                  key={booking.id}
+                                  type="button"
+                                  onClick={() => setSelectedAvailabilityDate(booking.checkIn)}
+                                  className="w-full rounded-xl border border-warm-border bg-white p-3 text-left transition-colors hover:border-secondary/40 hover:bg-warm-bg"
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <span className="truncate text-xs font-bold text-dark">{getBookingGuestName(booking)}</span>
+                                    <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-bold uppercase ${booking.status === "confirmed" ? "bg-primary/10 text-primary" : "bg-warm-card text-dark-muted"}`}>
+                                      {booking.status === "confirmed" ? "Confirmada" : "Cancelada"}
+                                    </span>
+                                  </div>
+                                  <span className="mt-1 block text-[11px] text-dark-muted">{formatAvailabilityDate(booking.checkIn)} – {formatAvailabilityDate(booking.checkOut)}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </aside>
+                    </div>
+                  )}
                 </section>
 
                 <section className="rounded-3xl border border-warm-border bg-white p-6 shadow-sm">
