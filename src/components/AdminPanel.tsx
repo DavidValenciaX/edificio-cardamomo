@@ -108,7 +108,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
   const [roomIdInput, setRoomIdInput] = useState("");
   const [roomName, setRoomName] = useState("");
   const [roomDesc, setRoomDesc] = useState("");
-  const [roomPrice, setRoomPrice] = useState(0);
+  const [roomPrice, setRoomPrice] = useState("");
   const [roomCapacity, setRoomCapacity] = useState(2);
   const [roomFeatures, setRoomFeatures] = useState<RoomFeatures>(buildDefaultRoomFeatures());
   const [roomImages, setRoomImages] = useState<string[]>([]);
@@ -392,7 +392,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       setRoomIdInput(room.id);
       setRoomName(room.name);
       setRoomDesc(room.description);
-      setRoomPrice(room.pricePerNight);
+      setRoomPrice(String(room.pricePerNight));
       setRoomCapacity(room.capacity);
       setRoomFeatures({ ...room.features });
       setRoomImages([...room.images]);
@@ -408,7 +408,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       setRoomIdInput(newRoomRef.id);
       setRoomName("");
       setRoomDesc("");
-      setRoomPrice(170000);
+      setRoomPrice("170000");
       setRoomCapacity(2);
       setRoomFeatures(buildDefaultRoomFeatures());
       setRoomImages([]);
@@ -452,7 +452,17 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
 
   const handleSaveRoom = async (e: FormEvent) => {
     e.preventDefault();
-    if (!roomIdInput || !roomName || roomPrice <= 0 || roomCapacity <= 0 || roomFeatures.bedrooms <= 0 || roomFeatures.beds <= 0) {
+    const parsedRoomPrice = Number(roomPrice);
+    if (
+      !roomIdInput
+      || !roomName
+      || !roomPrice.trim()
+      || Number.isNaN(parsedRoomPrice)
+      || parsedRoomPrice <= 0
+      || roomCapacity <= 0
+      || roomFeatures.bedrooms <= 0
+      || roomFeatures.beds <= 0
+    ) {
       alert("Por favor complete los campos obligatorios.");
       return;
     }
@@ -461,7 +471,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       id: roomIdInput,
       name: roomName,
       description: roomDesc,
-      pricePerNight: Number(roomPrice),
+      pricePerNight: parsedRoomPrice,
       capacity: Number(roomCapacity),
       features: roomFeatures,
       images: roomImages,
@@ -822,7 +832,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                     </div>
                     <div>
                       <label htmlFor="room-price" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Precio por noche (COP) *</label>
-                      <input id="room-price" name="pricePerNight" inputMode="numeric" autoComplete="off" type="number" required min={1} value={roomPrice} onChange={(e) => setRoomPrice(Number(e.target.value))} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark" />
+                      <input id="room-price" name="pricePerNight" inputMode="numeric" autoComplete="off" type="number" required min={1} value={roomPrice} onChange={(e) => setRoomPrice(e.target.value)} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark" />
                     </div>
                     <div>
                       <label htmlFor="room-capacity" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Capacidad máxima *</label>
