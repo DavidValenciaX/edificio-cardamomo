@@ -408,6 +408,7 @@ export default function GuestDashboard({
 
   const roomServiceBadges = [
     { label: "Sofa cama", enabled: activeRoom.features.hasSofaBed },
+    { label: "Aire acondicionado", enabled: activeRoom.features.hasAirConditioning },
     { label: "Wifi", enabled: activeRoom.features.hasWifi },
     { label: "TV", enabled: activeRoom.features.hasTv },
     { label: "Cocina completa", enabled: activeRoom.features.hasFullKitchen },

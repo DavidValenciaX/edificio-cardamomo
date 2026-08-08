@@ -853,6 +853,10 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                         Sofa cama
                       </label>
                       <label className="flex min-h-11 items-center gap-3 rounded-xl border border-warm-border bg-white px-4 text-sm font-semibold text-dark">
+                        <input type="checkbox" checked={roomFeatures.hasAirConditioning} onChange={(e) => setRoomFeatures((current) => ({ ...current, hasAirConditioning: e.target.checked }))} className="h-4 w-4 rounded border-warm-border text-primary focus:ring-primary" />
+                        Aire acondicionado
+                      </label>
+                      <label className="flex min-h-11 items-center gap-3 rounded-xl border border-warm-border bg-white px-4 text-sm font-semibold text-dark">
                         <input type="checkbox" checked={roomFeatures.hasWifi} onChange={(e) => setRoomFeatures((current) => ({ ...current, hasWifi: e.target.checked }))} className="h-4 w-4 rounded border-warm-border text-primary focus:ring-primary" />
                         Wifi
                       </label>

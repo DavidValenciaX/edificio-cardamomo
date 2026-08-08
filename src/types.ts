@@ -19,6 +19,7 @@ export interface RoomFeatures {
   bedrooms: number;
   beds: number;
   hasSofaBed: boolean;
+  hasAirConditioning: boolean;
   hasWifi: boolean;
   hasTv: boolean;
   hasFullKitchen: boolean;

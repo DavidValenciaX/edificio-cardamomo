@@ -84,6 +84,7 @@ service cloud.firestore {
             && data.features.bedrooms is int && data.features.bedrooms >= 1 && data.features.bedrooms <= 20
             && data.features.beds is int && data.features.beds >= 1 && data.features.beds <= 30
             && data.features.hasSofaBed is bool
+            && data.features.hasAirConditioning is bool
             && data.features.hasWifi is bool
             && data.features.hasTv is bool
             && data.features.hasFullKitchen is bool

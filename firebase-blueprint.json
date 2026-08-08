@@ -33,13 +33,14 @@
             "bedrooms": { "type": "number", "description": "Number of bedrooms" },
             "beds": { "type": "number", "description": "Total number of beds" },
             "hasSofaBed": { "type": "boolean", "description": "Whether the room includes a sofa bed" },
+            "hasAirConditioning": { "type": "boolean", "description": "Whether the room includes air conditioning" },
             "hasWifi": { "type": "boolean", "description": "Whether wifi is available" },
             "hasTv": { "type": "boolean", "description": "Whether a TV is available" },
             "hasFullKitchen": { "type": "boolean", "description": "Whether the room includes a full kitchen" },
             "hasFridge": { "type": "boolean", "description": "Whether the room includes a fridge" },
             "hasPrivateBathroom": { "type": "boolean", "description": "Whether the room includes a private bathroom" }
           },
-          "required": ["bedrooms", "beds", "hasSofaBed", "hasWifi", "hasTv", "hasFullKitchen", "hasFridge", "hasPrivateBathroom"]
+          "required": ["bedrooms", "beds", "hasSofaBed", "hasAirConditioning", "hasWifi", "hasTv", "hasFullKitchen", "hasFridge", "hasPrivateBathroom"]
         },
         "images": { "type": "array", "description": "List of URLs for photos of the room" },
         "blockedDates": { "type": "array", "description": "List of dates (YYYY-MM-DD) that are occupied/blocked" }

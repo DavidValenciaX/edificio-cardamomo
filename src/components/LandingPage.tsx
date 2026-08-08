@@ -62,6 +62,7 @@ export default function LandingPage({
     ];
 
     if (room.features.hasSofaBed) labels.push("Sofa cama");
+    if (room.features.hasAirConditioning) labels.push("Aire acondicionado");
     if (room.features.hasWifi) labels.push("Wifi");
     if (room.features.hasTv) labels.push("TV");
     if (room.features.hasFullKitchen) labels.push("Cocina completa");
