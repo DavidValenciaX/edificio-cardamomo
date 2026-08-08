@@ -1191,7 +1191,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
           )}
 
           {activeSection === "availability" && (
-            <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+            <div className="space-y-6">
               <div className="space-y-6">
                 <section className="rounded-3xl border border-warm-border bg-white p-6 shadow-sm">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1247,7 +1247,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                       Crea un apartamento para comenzar a consultar disponibilidad.
                     </div>
                   ) : (
-                    <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(16rem,0.9fr)]">
+                    <div className="mt-6 grid gap-6 2xl:grid-cols-[minmax(0,1.2fr)_minmax(24rem,0.8fr)]">
                       <div>
                         <div className="flex items-center justify-between gap-3 rounded-2xl border border-warm-border bg-warm-card/60 px-3 py-3">
                           <button
@@ -1285,7 +1285,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                         <div className="mt-2 grid grid-cols-7 gap-1">
                           {availabilityCalendarDays.map((day, index) => {
                             const status = day.dateStr ? getAvailabilityStatus(day.dateStr, availabilityDateSets) : null;
-                            const isSelected = day.dateStr === selectedAvailabilityDate;
+                            const isSelected = day.isCurrentMonth && day.dateStr === selectedAvailabilityDate;
 
                             return (
                               <button
@@ -1422,7 +1422,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
               <section className="rounded-3xl bg-dark p-6 text-warm-bg shadow-sm">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-accent">Lectura rápida</p>
                 <h3 className="mt-2 font-display text-2xl font-semibold">Disponibilidad del inventario</h3>
-                <div className="mt-6 space-y-3">
+                <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {rooms.length === 0 ? <p className="rounded-2xl border border-warm-bg/15 bg-warm-bg/10 p-4 text-sm text-warm-bg/75">Crea un apartamento para comenzar a gestionar fechas.</p> : rooms.map((room) => (
                     <div key={room.id} className="rounded-2xl border border-warm-bg/15 bg-warm-bg/10 p-4">
                       <div className="flex items-center justify-between gap-3"><span className="truncate text-sm font-bold">{room.name}</span><span className="font-mono text-xs text-accent">{room.blockedDates.length} días</span></div>
