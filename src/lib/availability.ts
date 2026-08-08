@@ -9,6 +9,47 @@ export interface CalendarDay {
 
 export type AvailabilityStatus = "available" | "reserved" | "blocked";
 
+export function getTodayDateString(now = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+export function isPastAvailabilityDate(dateStr: string, todayDateStr = getTodayDateString()): boolean {
+  return Boolean(dateStr) && dateStr < todayDateStr;
+}
+
+export function datesForInclusiveRange(startDate: string, endDate: string): string[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    return [];
+  }
+
+  const start = startDate <= endDate ? startDate : endDate;
+  const end = startDate <= endDate ? endDate : startDate;
+  return [...datesForRange(start, end), end];
+}
+
+export function extendDateRangeSelection(
+  startDate: string,
+  endDate: string,
+  selectedDate: string,
+): { startDate: string; endDate: string } {
+  if (!selectedDate) return { startDate, endDate };
+  if (!startDate || !endDate) return { startDate: selectedDate, endDate: selectedDate };
+  if (selectedDate < startDate) return { startDate: selectedDate, endDate };
+  if (selectedDate > endDate) return { startDate, endDate: selectedDate };
+  return { startDate, endDate };
+}
+
+export function selectDateForRange(
+  startDate: string,
+  endDate: string,
+  selectedDate: string,
+): { startDate: string; endDate: string } {
+  if (startDate && endDate && startDate !== endDate) {
+    return { startDate: selectedDate, endDate: selectedDate };
+  }
+  return extendDateRangeSelection(startDate, endDate, selectedDate);
+}
+
 export interface AvailabilityDateSets {
   reservedDates: Set<string>;
   blockedDates: Set<string>;

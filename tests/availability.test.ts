@@ -2,9 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   buildAvailabilityDateSets,
+  datesForInclusiveRange,
+  extendDateRangeSelection,
   getAvailabilityStatus,
   getBookingsForDate,
   getCalendarDays,
+  getTodayDateString,
+  isPastAvailabilityDate,
+  selectDateForRange,
 } from "../src/lib/availability.ts";
 import { Booking, Room } from "../src/types.ts";
 
@@ -85,4 +90,60 @@ test("calendar days start on Sunday and include all days in the selected month",
   assert.equal(days[6].dateStr, "2026-08-01");
   assert.equal(days.filter((day) => day.isCurrentMonth).length, 31);
   assert.equal(days.at(-1)?.dateStr, "2026-08-31");
+});
+
+test("past availability dates are disabled before today but today remains selectable", () => {
+  const today = getTodayDateString(new Date("2026-08-08T12:00:00"));
+
+  assert.equal(today, "2026-08-08");
+  assert.equal(isPastAvailabilityDate("2026-08-07", today), true);
+  assert.equal(isPastAvailabilityDate("2026-08-08", today), false);
+  assert.equal(isPastAvailabilityDate("2026-08-09", today), false);
+});
+
+test("manual block ranges include both endpoints and normalize reverse selection", () => {
+  assert.deepEqual(
+    datesForInclusiveRange("2026-08-10", "2026-08-12"),
+    ["2026-08-10", "2026-08-11", "2026-08-12"],
+  );
+  assert.deepEqual(
+    datesForInclusiveRange("2026-08-12", "2026-08-10"),
+    ["2026-08-10", "2026-08-11", "2026-08-12"],
+  );
+  assert.deepEqual(datesForInclusiveRange("2026-08-10", "2026-08-10"), ["2026-08-10"]);
+});
+
+test("range selection starts as one day and only grows toward the selected outer date", () => {
+  assert.deepEqual(
+    extendDateRangeSelection("", "", "2026-08-17"),
+    { startDate: "2026-08-17", endDate: "2026-08-17" },
+  );
+  assert.deepEqual(
+    extendDateRangeSelection("2026-08-17", "2026-08-17", "2026-08-12"),
+    { startDate: "2026-08-12", endDate: "2026-08-17" },
+  );
+  assert.deepEqual(
+    extendDateRangeSelection("2026-08-12", "2026-08-17", "2026-08-21"),
+    { startDate: "2026-08-12", endDate: "2026-08-21" },
+  );
+  assert.deepEqual(
+    extendDateRangeSelection("2026-08-12", "2026-08-21", "2026-08-17"),
+    { startDate: "2026-08-12", endDate: "2026-08-21" },
+  );
+  assert.deepEqual(
+    selectDateForRange("", "", "2026-08-17"),
+    { startDate: "2026-08-17", endDate: "2026-08-17" },
+  );
+  assert.deepEqual(
+    selectDateForRange("2026-08-17", "2026-08-17", "2026-08-12"),
+    { startDate: "2026-08-12", endDate: "2026-08-17" },
+  );
+  assert.deepEqual(
+    selectDateForRange("2026-08-12", "2026-08-17", "2026-08-15"),
+    { startDate: "2026-08-15", endDate: "2026-08-15" },
+  );
+  assert.deepEqual(
+    selectDateForRange("2026-08-12", "2026-08-17", "2026-08-21"),
+    { startDate: "2026-08-21", endDate: "2026-08-21" },
+  );
 });

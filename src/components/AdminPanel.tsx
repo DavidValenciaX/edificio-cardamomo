@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent, ChangeEvent, type DragEvent } from "react";
+import { useState, useEffect, useRef, FormEvent, ChangeEvent, type DragEvent, type PointerEvent } from "react";
 import { 
   collection, 
   getDocs, 
@@ -7,15 +7,13 @@ import {
   setDoc, 
   updateDoc, 
   deleteDoc,
-  query,
-  where,
 } from "firebase/firestore";
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { auth, db, handleFirestoreError, OperationType, storage } from "../lib/firebase";
 import { getApiUrl, getPublicApiOrigin } from "../lib/api";
 import { buildDefaultRoomFeatures, DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 import { getOccupancyPriceOptions, getRoomStartingPrice } from "../lib/pricing";
-import { buildAvailabilityDateSets, formatAvailabilityDate, getAvailabilityStatus, getBookingsForDate, getCalendarDays, type AvailabilityStatus } from "../lib/availability";
+import { buildAvailabilityDateSets, datesForInclusiveRange, formatAvailabilityDate, getAvailabilityStatus, getBookingsForDate, getCalendarDays, getTodayDateString, isPastAvailabilityDate, selectDateForRange, type AvailabilityStatus } from "../lib/availability";
 import { datesForRange, normalizeDateList } from "../lib/ical";
 import { Booking, PublicContent, Room, RoomFeatures, RoomIntegration, Settings } from "../types";
 import PublicContentEditor from "./PublicContentEditor";
@@ -86,6 +84,11 @@ function buildEmptyRoomIntegration(roomId: string = ""): RoomIntegration {
 
 type AdminSectionId = "overview" | "rooms" | "availability" | "content" | "branding";
 
+type ManualBlockFeedback = {
+  type: "status" | "error";
+  message: string;
+};
+
 const adminSections: Array<{
   id: AdminSectionId;
   label: string;
@@ -133,9 +136,17 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
   const [manualBlockedDates, setManualBlockedDates] = useState<string[]>([]);
   const [externalBlockedDates, setExternalBlockedDates] = useState<string[]>([]);
 
-  // Manual blockers scheduler
-  const [blockerRoomId, setBlockerRoomId] = useState("");
-  const [manualBlockDate, setManualBlockDate] = useState("");
+  // Manual blocker range selection
+  const [manualBlockStartDate, setManualBlockStartDate] = useState("");
+  const [manualBlockEndDate, setManualBlockEndDate] = useState("");
+  const [manualBlockHoverDate, setManualBlockHoverDate] = useState("");
+  const [manualBlockPointerStartDate, setManualBlockPointerStartDate] = useState("");
+  const [manualBlockPointerActive, setManualBlockPointerActive] = useState(false);
+  const [manualBlockSaving, setManualBlockSaving] = useState(false);
+  const [manualBlockFeedback, setManualBlockFeedback] = useState<ManualBlockFeedback | null>(null);
+  const manualBlockPointerStartRef = useRef("");
+  const manualBlockPointerHoverRef = useRef("");
+  const manualBlockPointerMovedRef = useRef(false);
 
   // Administrative availability calendar
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -370,14 +381,13 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
     void fetchGlobalSettings();
     void fetchRoomIntegrations();
     if (rooms.length === 0) {
-      setBlockerRoomId("");
       setAvailabilityRoomId("");
+      setManualBlockStartDate("");
+      setManualBlockEndDate("");
+      setManualBlockHoverDate("");
       return;
     }
 
-    setBlockerRoomId((currentRoomId) => (
-      rooms.some((room) => room.id === currentRoomId) ? currentRoomId : rooms[0].id
-    ));
     setAvailabilityRoomId((currentRoomId) => (
       rooms.some((room) => room.id === currentRoomId) ? currentRoomId : rooms[0].id
     ));
@@ -673,62 +683,188 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
     }
   };
 
-  // Manual Blocker Scheduler Submit
-  const handleAddManualBlock = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!manualBlockDate || !blockerRoomId) {
-      alert("Seleccione apartamento y fecha.");
+  const resetManualBlockSelection = () => {
+    setManualBlockStartDate("");
+    setManualBlockEndDate("");
+    setManualBlockHoverDate("");
+    setManualBlockPointerStartDate("");
+    setManualBlockPointerActive(false);
+    manualBlockPointerStartRef.current = "";
+    manualBlockPointerHoverRef.current = "";
+    manualBlockPointerMovedRef.current = false;
+  };
+
+  const selectManualBlockRange = (firstDate: string, secondDate: string) => {
+    const todayDateString = getTodayDateString();
+    if (
+      !firstDate
+      || !secondDate
+      || isPastAvailabilityDate(firstDate, todayDateString)
+      || isPastAvailabilityDate(secondDate, todayDateString)
+    ) {
       return;
     }
 
+    const startDate = firstDate <= secondDate ? firstDate : secondDate;
+    const endDate = firstDate <= secondDate ? secondDate : firstDate;
+    setManualBlockStartDate(startDate);
+    setManualBlockEndDate(endDate);
+    setManualBlockHoverDate(endDate);
+    setSelectedAvailabilityDate(endDate);
+  };
+
+  const handleManualBlockCalendarSelect = (dateStr: string) => {
+    if (!dateStr || isPastAvailabilityDate(dateStr, getTodayDateString())) return;
+
+    setSelectedAvailabilityDate(dateStr);
+    setManualBlockFeedback(null);
+    const nextRange = selectDateForRange(manualBlockStartDate, manualBlockEndDate, dateStr);
+    setManualBlockStartDate(nextRange.startDate);
+    setManualBlockEndDate(nextRange.endDate);
+    setManualBlockHoverDate(nextRange.endDate);
+  };
+
+  const handleManualBlockPointerDown = (event: PointerEvent<HTMLButtonElement>, dateStr: string) => {
+    if (!dateStr || isPastAvailabilityDate(dateStr, getTodayDateString())) return;
+
+    event.preventDefault();
+    event.currentTarget.focus();
+    manualBlockPointerStartRef.current = dateStr;
+    manualBlockPointerHoverRef.current = dateStr;
+    manualBlockPointerMovedRef.current = false;
+    setManualBlockPointerStartDate(dateStr);
+    setManualBlockPointerActive(true);
+    setManualBlockHoverDate(dateStr);
+    setSelectedAvailabilityDate(dateStr);
+    setManualBlockFeedback(null);
+  };
+
+  const handleManualBlockPointerEnter = (dateStr: string) => {
+    if (!manualBlockPointerStartRef.current || !dateStr || isPastAvailabilityDate(dateStr, getTodayDateString())) return;
+
+    if (dateStr !== manualBlockPointerStartRef.current) {
+      manualBlockPointerMovedRef.current = true;
+    }
+    manualBlockPointerHoverRef.current = dateStr;
+    setManualBlockHoverDate(dateStr);
+    setSelectedAvailabilityDate(dateStr);
+  };
+
+  useEffect(() => {
+    if (!manualBlockPointerActive) return undefined;
+
+    const finishPointerSelection = () => {
+      const startDate = manualBlockPointerStartRef.current;
+      const endDate = manualBlockPointerHoverRef.current || startDate;
+      const movedAcrossCells = manualBlockPointerMovedRef.current && startDate !== endDate;
+
+      manualBlockPointerStartRef.current = "";
+      manualBlockPointerHoverRef.current = "";
+      manualBlockPointerMovedRef.current = false;
+      setManualBlockPointerStartDate("");
+      setManualBlockPointerActive(false);
+
+      if (!startDate) return;
+      if (movedAcrossCells) {
+        selectManualBlockRange(startDate, endDate);
+      } else {
+        handleManualBlockCalendarSelect(endDate);
+      }
+    };
+
+    window.addEventListener("pointerup", finishPointerSelection);
+    window.addEventListener("pointercancel", finishPointerSelection);
+    return () => {
+      window.removeEventListener("pointerup", finishPointerSelection);
+      window.removeEventListener("pointercancel", finishPointerSelection);
+    };
+  }, [manualBlockPointerActive]);
+
+  const handleManualBlockRangeAction = async (action: "block" | "release") => {
+    setManualBlockFeedback(null);
+    if (!availabilityRoomId || !manualBlockStartDate || !manualBlockEndDate) {
+      setManualBlockFeedback({ type: "error", message: "Selecciona una fecha de inicio y una fecha final en el calendario." });
+      return;
+    }
+
+    const selectedDates = datesForInclusiveRange(manualBlockStartDate, manualBlockEndDate)
+      .filter((dateStr) => !isPastAvailabilityDate(dateStr, getTodayDateString()));
+    if (selectedDates.length === 0) {
+      setManualBlockFeedback({ type: "error", message: "El rango seleccionado no contiene fechas futuras que se puedan gestionar." });
+      return;
+    }
+
+    setManualBlockSaving(true);
     try {
-      const roomRef = doc(db, "rooms", blockerRoomId);
+      const roomRef = doc(db, "rooms", availabilityRoomId);
       const roomSnap = await getDoc(roomRef);
-      if (roomSnap.exists()) {
-        const rData = roomSnap.data() as Partial<Room>;
-        const currentBlocked = Array.isArray(rData.blockedDates) ? rData.blockedDates : [];
-        const currentManual = Array.isArray(rData.manualBlockedDates)
-          ? rData.manualBlockedDates
-          : currentBlocked;
-        const currentExternal = Array.isArray(rData.externalBlockedDates)
-          ? rData.externalBlockedDates
-          : [];
-        const confirmedBookingsSnap = await getDocs(query(
-          collection(db, "bookings"),
-          where("roomId", "==", blockerRoomId),
-        ));
-        const confirmedReservationDates = confirmedBookingsSnap.docs
-          .map((bookingDoc) => bookingDoc.data() as Booking)
-          .filter((booking) => booking.status === "confirmed")
-          .flatMap((booking) => datesForRange(booking.checkIn, booking.checkOut));
-        const isManualBlock = currentManual.includes(manualBlockDate);
-        const nextManual = isManualBlock
-          ? currentManual.filter((date) => date !== manualBlockDate)
-          : [...currentManual, manualBlockDate];
-        const nextBlocked = new Set([
+      if (!roomSnap.exists()) {
+        setManualBlockFeedback({ type: "error", message: "No se encontró el apartamento seleccionado." });
+        return;
+      }
+
+      const roomData = roomSnap.data() as Partial<Room>;
+      const currentBlocked = Array.isArray(roomData.blockedDates) ? roomData.blockedDates : [];
+      const currentManual = Array.isArray(roomData.manualBlockedDates)
+        ? roomData.manualBlockedDates
+        : currentBlocked;
+      const currentExternal = Array.isArray(roomData.externalBlockedDates)
+        ? roomData.externalBlockedDates
+        : [];
+      const latestBookingsSnap = await getDocs(collection(db, "bookings"));
+      const confirmedReservationDates = latestBookingsSnap.docs
+        .map((bookingDoc) => bookingDoc.data() as Booking)
+        .filter((booking) => booking.roomId === availabilityRoomId && booking.status === "confirmed")
+        .flatMap((booking) => datesForRange(booking.checkIn, booking.checkOut));
+      const protectedDates = new Set([...currentExternal, ...confirmedReservationDates]);
+      const selectedDateSet = new Set(selectedDates);
+
+      if (action === "block") {
+        const datesToBlock = selectedDates.filter((dateStr) => !protectedDates.has(dateStr));
+        const nextManual = normalizeDateList([...currentManual, ...datesToBlock]);
+        const nextBlocked = normalizeDateList([
           ...nextManual,
           ...currentExternal,
           ...confirmedReservationDates,
         ]);
-
-        if (isManualBlock && !currentExternal.includes(manualBlockDate) && !confirmedReservationDates.includes(manualBlockDate)) {
-          nextBlocked.delete(manualBlockDate);
-          alert(`Fecha ${manualBlockDate} liberada.`);
-        } else if (isManualBlock) {
-          alert(`Fecha ${manualBlockDate} liberada como bloqueo local; permanece ocupada por otra fuente.`);
-        } else {
-          alert(`Fecha ${manualBlockDate} bloqueada manualmente.`);
-        }
-
         await updateDoc(roomRef, {
-          blockedDates: normalizeDateList([...nextBlocked]),
-          manualBlockedDates: normalizeDateList(nextManual),
+          blockedDates: nextBlocked,
+          manualBlockedDates: nextManual,
         });
-        onRefreshRooms();
-        setManualBlockDate("");
+        const protectedCount = selectedDates.length - datesToBlock.length;
+        setManualBlockFeedback({
+          type: "status",
+          message: protectedCount > 0
+            ? `Se bloquearon ${datesToBlock.length} ${datesToBlock.length === 1 ? "fecha" : "fechas"}. ${protectedCount} ${protectedCount === 1 ? "fecha quedó" : "fechas quedaron"} protegida${protectedCount === 1 ? "" : "s"} por una reserva o una fuente externa.`
+            : `Se bloquearon ${datesToBlock.length} ${datesToBlock.length === 1 ? "fecha" : "fechas"} como bloqueo local.`,
+        });
+      } else {
+        const datesToRelease = currentManual.filter((dateStr) => selectedDateSet.has(dateStr));
+        const nextManual = normalizeDateList(currentManual.filter((dateStr) => !selectedDateSet.has(dateStr)));
+        const nextBlocked = normalizeDateList([
+          ...nextManual,
+          ...currentExternal,
+          ...confirmedReservationDates,
+        ]);
+        await updateDoc(roomRef, {
+          blockedDates: nextBlocked,
+          manualBlockedDates: nextManual,
+        });
+        setManualBlockFeedback({
+          type: "status",
+          message: datesToRelease.length > 0
+            ? `Se liberaron ${datesToRelease.length} ${datesToRelease.length === 1 ? "bloqueo local" : "bloqueos locales"}. Las reservas y fechas externas se conservaron.`
+            : "No había bloqueos locales en el rango seleccionado. Las reservas y fechas externas se conservaron.",
+        });
       }
-    } catch (err: any) {
-      console.error("Manual block failed:", err);
+
+      onRefreshRooms();
+      resetManualBlockSelection();
+    } catch (error) {
+      console.error("Manual block range action failed:", error);
+      setManualBlockFeedback({ type: "error", message: "No se pudo actualizar el rango. Inténtalo de nuevo." });
+    } finally {
+      setManualBlockSaving(false);
     }
   };
 
@@ -786,6 +922,33 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
     ? buildAvailabilityDateSets(availabilityRoom, confirmedAvailabilityBookings)
     : { reservedDates: new Set<string>(), blockedDates: new Set<string>() };
   const availabilityCalendarDays = getCalendarDays(availabilityMonth, availabilityYear);
+  const todayDateString = getTodayDateString();
+  const manualBlockPreviewPointerEndDate = manualBlockHoverDate || manualBlockPointerStartDate;
+  const manualBlockPreviewStartDate = manualBlockPointerActive
+    ? (manualBlockPointerStartDate <= manualBlockPreviewPointerEndDate ? manualBlockPointerStartDate : manualBlockPreviewPointerEndDate)
+    : manualBlockStartDate;
+  const manualBlockPreviewEndDate = manualBlockPointerActive
+    ? (manualBlockPointerStartDate >= manualBlockPreviewPointerEndDate ? manualBlockPointerStartDate : manualBlockPreviewPointerEndDate)
+    : (manualBlockEndDate || manualBlockHoverDate);
+  const manualBlockPreviewDates = manualBlockPreviewStartDate && manualBlockPreviewEndDate
+    ? datesForInclusiveRange(manualBlockPreviewStartDate, manualBlockPreviewEndDate)
+    : [];
+  const manualBlockSelectedDates = manualBlockStartDate && manualBlockEndDate
+    ? datesForInclusiveRange(manualBlockStartDate, manualBlockEndDate)
+    : [];
+  const manualBlockedDateSet = new Set(availabilityRoom?.manualBlockedDates || []);
+  const externalBlockedDateSet = new Set(availabilityRoom?.externalBlockedDates || []);
+  const confirmedAvailabilityDateSet = new Set(
+    confirmedAvailabilityBookings.flatMap((booking) => datesForRange(booking.checkIn, booking.checkOut)),
+  );
+  const protectedManualBlockDateSet = new Set([
+    ...externalBlockedDateSet,
+    ...confirmedAvailabilityDateSet,
+  ]);
+  const manualBlockableDates = manualBlockSelectedDates.filter((dateStr) => !protectedManualBlockDateSet.has(dateStr));
+  const manualBlockProtectedDates = manualBlockSelectedDates.filter((dateStr) => protectedManualBlockDateSet.has(dateStr));
+  const manualBlockAvailableDates = manualBlockableDates.filter((dateStr) => !manualBlockedDateSet.has(dateStr));
+  const manualBlockReleasableDates = manualBlockSelectedDates.filter((dateStr) => manualBlockedDateSet.has(dateStr));
   const selectedDateBookings = selectedAvailabilityDate
     ? getBookingsForDate(selectedAvailabilityDate, confirmedAvailabilityBookings)
     : [];
@@ -802,17 +965,19 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
     setAvailabilityMonth(nextMonth.getMonth());
     setAvailabilityYear(nextMonth.getFullYear());
     setSelectedAvailabilityDate("");
+    setManualBlockHoverDate("");
   };
 
   const getBookingGuestName = (booking: Booking): string => {
     return booking.guestContact?.fullName || booking.userDisplayName || "Huésped sin nombre";
   };
 
-  const getCalendarCellLabel = (dateStr: string, status: AvailabilityStatus): string => {
+  const getCalendarCellLabel = (dateStr: string, status: AvailabilityStatus, isPast: boolean, isRangeSelected: boolean): string => {
     const dateLabel = formatAvailabilityDate(dateStr);
-    if (status === "reserved") return `${dateLabel}: reservada`;
-    if (status === "blocked") return `${dateLabel}: bloqueada`;
-    return `${dateLabel}: disponible`;
+    const statusLabel = status === "reserved" ? "reservada" : status === "blocked" ? "bloqueada" : "disponible";
+    const pastLabel = isPast ? "; fecha pasada, no disponible para bloqueo" : "";
+    const rangeLabel = isRangeSelected ? "; dentro del rango de bloqueo seleccionado" : "";
+    return `${dateLabel}: ${statusLabel}${pastLabel}${rangeLabel}`;
   };
 
   return (
@@ -1263,6 +1428,8 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                         onChange={(event) => {
                           setAvailabilityRoomId(event.target.value);
                           setSelectedAvailabilityDate("");
+                          resetManualBlockSelection();
+                          setManualBlockFeedback(null);
                         }}
                         disabled={rooms.length === 0}
                         className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 text-sm font-semibold text-dark disabled:cursor-not-allowed disabled:opacity-60"
@@ -1322,34 +1489,59 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                           <span>Sáb</span>
                         </div>
 
+                        <p className="mt-3 text-xs leading-5 text-dark-muted" role="status" aria-live="polite">
+                          {manualBlockPointerActive
+                            ? "Arrastra sobre las fechas para previsualizar el rango y suelta para confirmarlo."
+                            : manualBlockStartDate && manualBlockEndDate && manualBlockStartDate !== manualBlockEndDate
+                            ? "Rango seleccionado. Elige una fecha anterior para ampliar el inicio o una posterior para ampliar el final."
+                            : manualBlockStartDate
+                              ? "Día seleccionado. Elige una fecha anterior o posterior para ampliar el rango."
+                              : "Haz clic en una fecha para seleccionar un día o arrastra sobre varias fechas futuras."}
+                        </p>
+
                         <div className="mt-2 grid grid-cols-7 gap-1">
                           {availabilityCalendarDays.map((day, index) => {
                             const status = day.dateStr ? getAvailabilityStatus(day.dateStr, availabilityDateSets) : null;
+                            const isPast = Boolean(day.dateStr) && isPastAvailabilityDate(day.dateStr, todayDateString);
+                            const isInteractive = day.isCurrentMonth && Boolean(day.dateStr) && !isPast;
+                            const isRangeSelected = Boolean(day.dateStr) && manualBlockPreviewDates.includes(day.dateStr);
+                            const isRangeStart = Boolean(day.dateStr) && day.dateStr === manualBlockPreviewStartDate;
+                            const isRangeEnd = Boolean(day.dateStr) && day.dateStr === manualBlockPreviewEndDate;
                             const isSelected = day.isCurrentMonth && day.dateStr === selectedAvailabilityDate;
 
                             return (
                               <button
                                 key={`${day.dateStr || "outside"}-${index}`}
                                 type="button"
-                                disabled={!day.isCurrentMonth}
-                                aria-label={status && day.dateStr ? getCalendarCellLabel(day.dateStr, status) : undefined}
-                                aria-pressed={isSelected}
-                                onClick={() => {
-                                  if (day.dateStr) setSelectedAvailabilityDate(day.dateStr);
-                                }}
-                                className={`relative flex min-h-11 w-full flex-col items-center justify-center rounded-xl border text-sm font-semibold transition-colors focus-visible:z-10 ${
+                                disabled={!isInteractive}
+                                aria-label={status && day.dateStr ? getCalendarCellLabel(day.dateStr, status, isPast, isRangeSelected) : undefined}
+                                aria-pressed={isRangeSelected}
+                                aria-current={day.dateStr === todayDateString ? "date" : undefined}
+                                onPointerDown={isInteractive ? (event) => handleManualBlockPointerDown(event, day.dateStr) : undefined}
+                                onPointerEnter={isInteractive ? () => handleManualBlockPointerEnter(day.dateStr) : undefined}
+                                onKeyDown={isInteractive ? (event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    handleManualBlockCalendarSelect(day.dateStr);
+                                  }
+                                } : undefined}
+                                className={`relative flex min-h-11 w-full touch-manipulation flex-col items-center justify-center rounded-xl border text-sm font-semibold transition-colors focus-visible:z-10 ${
                                   !day.isCurrentMonth
                                     ? "pointer-events-none border-transparent bg-transparent text-transparent"
-                                    : status === "reserved"
+                                    : isPast
+                                      ? "cursor-not-allowed border-warm-border/50 bg-warm-card/40 text-dark-muted/50 opacity-50"
+                                      : status === "reserved"
                                       ? "border-primary/40 bg-primary/15 text-dark hover:bg-primary/25"
                                       : status === "blocked"
                                         ? "border-danger/35 bg-danger/10 text-danger hover:bg-danger/15"
                                         : "border-warm-border bg-warm-card text-dark hover:bg-warm-border"
-                                } ${isSelected ? "ring-2 ring-secondary ring-offset-2" : ""}`}
+                                } ${isRangeSelected ? "bg-accent/20 ring-2 ring-secondary/70 ring-inset" : ""} ${isRangeStart || isRangeEnd ? "ring-2 ring-secondary ring-offset-1" : ""} ${isSelected ? "ring-2 ring-secondary ring-offset-2" : ""}`}
                               >
                                 <span>{day.dayNum}</span>
                                 {status === "reserved" && <span className="mt-0.5 rounded-full bg-primary px-1.5 text-[9px] font-bold leading-4 text-warm-bg">R</span>}
                                 {status === "blocked" && <span className="mt-0.5 rounded-full bg-danger px-1.5 text-[9px] font-bold leading-4 text-white">B</span>}
+                                {isRangeStart && <span className="sr-only">Inicio del rango</span>}
+                                {isRangeEnd && <span className="sr-only">Fin del rango</span>}
                               </button>
                             );
                           })}
@@ -1439,23 +1631,96 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                 <section className="rounded-3xl border border-warm-border bg-white p-6 shadow-sm">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Bloqueo local</p>
                   <h3 className="mt-2 font-display text-2xl font-semibold text-dark">Mantenimiento y fechas especiales</h3>
-                  <p className="mt-2 text-sm leading-6 text-dark-muted">Bloquea una fecha desde Cardamomo. Estos bloqueos se conservan aunque sincronices Airbnb o Booking.com.</p>
-                  <form onSubmit={handleAddManualBlock} className="mt-6 space-y-4">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <label htmlFor="blocker-room-id" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Apartamento</label>
-                        <select id="blocker-room-id" value={blockerRoomId} onChange={(e) => setBlockerRoomId(e.target.value)} disabled={rooms.length === 0} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 text-sm font-semibold text-dark disabled:cursor-not-allowed disabled:opacity-60">
-                          {rooms.length === 0 && <option value="">Sin apartamentos</option>}
-                          {rooms.map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label htmlFor="manual-block-date" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Fecha</label>
-                        <input id="manual-block-date" type="date" required value={manualBlockDate} onChange={(e) => setManualBlockDate(e.target.value)} disabled={rooms.length === 0} className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark disabled:cursor-not-allowed disabled:opacity-60" />
-                      </div>
+                  <p className="mt-2 text-sm leading-6 text-dark-muted">Selecciona un rango en el calendario del apartamento. Los bloqueos locales se conservan aunque sincronices Airbnb o Booking.com.</p>
+
+                  <div className="mt-6 rounded-2xl border border-warm-border bg-warm-card/60 p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Apartamento seleccionado</p>
+                    <p className="mt-2 text-sm font-bold text-dark">{availabilityRoom?.name || "Sin apartamentos"}</p>
+                    <p className="mt-1 text-xs leading-5 text-dark-muted">Usa el selector del calendario superior para cambiar de apartamento.</p>
+                  </div>
+
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="manual-block-start" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Desde</label>
+                      <input
+                        id="manual-block-start"
+                        type="date"
+                        value={manualBlockStartDate}
+                        readOnly
+                        aria-readonly="true"
+                        min={todayDateString}
+                        disabled={!availabilityRoom}
+                        className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark disabled:cursor-not-allowed disabled:opacity-60"
+                      />
                     </div>
-                    <button type="submit" disabled={rooms.length === 0} className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-secondary px-5 text-sm font-bold text-warm-bg transition-colors hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50">Bloquear / liberar fecha</button>
-                  </form>
+                    <div>
+                      <label htmlFor="manual-block-end" className="mb-2 block text-xs font-bold uppercase tracking-[0.12em] text-dark-muted">Hasta</label>
+                      <input
+                        id="manual-block-end"
+                        type="date"
+                        value={manualBlockEndDate}
+                        readOnly
+                        aria-readonly="true"
+                        min={manualBlockStartDate || todayDateString}
+                        disabled={!availabilityRoom}
+                        className="min-h-11 w-full rounded-xl border border-warm-border bg-warm-card px-4 font-mono text-sm font-bold text-dark disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+                    </div>
+                  </div>
+
+                  {manualBlockSelectedDates.length > 0 && (
+                    <div className="mt-4 rounded-2xl border border-warm-border bg-warm-card/60 p-4" role="status" aria-live="polite">
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-secondary">Resumen del rango</p>
+                      <p className="mt-2 text-sm font-bold text-dark">
+                        {formatAvailabilityDate(manualBlockStartDate)} – {formatAvailabilityDate(manualBlockEndDate)} · {manualBlockSelectedDates.length} {manualBlockSelectedDates.length === 1 ? "fecha" : "fechas"}
+                      </p>
+                      <p className="mt-2 text-xs leading-5 text-dark-muted">
+                        {manualBlockAvailableDates.length} disponibles · {manualBlockProtectedDates.length} reservadas o externas · {manualBlockReleasableDates.length} bloqueos locales para liberar.
+                      </p>
+                    </div>
+                  )}
+
+                  {manualBlockFeedback && (
+                    <div
+                      className={`mt-4 rounded-xl border p-3 text-sm font-semibold ${manualBlockFeedback.type === "error" ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}
+                      role={manualBlockFeedback.type === "error" ? "alert" : "status"}
+                      aria-live="polite"
+                    >
+                      {manualBlockFeedback.message}
+                    </div>
+                  )}
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleManualBlockRangeAction("block")}
+                      disabled={manualBlockSaving || manualBlockSelectedDates.length === 0 || !availabilityRoom}
+                      className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-secondary px-5 text-sm font-bold text-warm-bg transition-colors hover:bg-secondary-hover disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {manualBlockSaving ? "Guardando…" : "Bloquear rango"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleManualBlockRangeAction("release")}
+                      disabled={manualBlockSaving || manualBlockSelectedDates.length === 0 || !availabilityRoom}
+                      className="inline-flex min-h-11 w-full items-center justify-center rounded-full border border-secondary bg-white px-5 text-sm font-bold text-secondary transition-colors hover:bg-warm-card disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Liberar bloqueos locales
+                    </button>
+                  </div>
+
+                  {(manualBlockStartDate || manualBlockEndDate) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetManualBlockSelection();
+                        setManualBlockFeedback(null);
+                      }}
+                      className="mt-3 min-h-11 rounded-xl px-3 text-sm font-bold text-dark-muted underline decoration-warm-border underline-offset-4 transition-colors hover:text-dark"
+                    >
+                      Limpiar selección
+                    </button>
+                  )}
                 </section>
               </div>
 
