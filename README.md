@@ -21,7 +21,7 @@ La app ya no usa `firebase-applet-config.json` como respaldo. Toda la configurac
 
 Despliega `firestore.rules` y `storage.rules` en tu proyecto Firebase. Las reglas permiten reservas de usuarios anónimos temporales y exigen datos básicos del huésped: nombre, celular e identificación. El logo del hotel se sube desde el panel admin a Firebase Storage y su URL queda guardada en `settings/global`.
 
-Las URLs iCal externas de Airbnb y Booking ya no viven en `rooms`. Ahora se guardan en `roomIntegrations/{roomId}`, una colección privada visible solo para administradores y usada por el backend al sincronizar disponibilidad. El frontend público sigue leyendo únicamente `rooms` y sus `blockedDates`.
+Las URLs iCal externas de Airbnb y Booking ya no viven en `rooms`. Ahora se guardan en `roomIntegrations/{roomId}`, una colección privada visible solo para administradores y usada por el backend al sincronizar disponibilidad. En `rooms`, `manualBlockedDates` conserva los bloqueos creados desde el panel, `externalBlockedDates` conserva la última proyección importada y `blockedDates` es la unión pública que consulta el huésped.
 
 Cuando un invitado temporal se registra con correo/contraseña o Google, la app consolida sus reservas en el usuario definitivo.
 
@@ -83,7 +83,9 @@ Los workflows reutilizan algunos secretos compartidos para no duplicarlos en Git
 - En Cloud Run el servidor ahora usa `process.env.PORT`.
 - La sincronización iCal por `setInterval` queda desactivada por defecto en producción. En Cloud Run conviene invocar `POST /api/sync-ical` desde Cloud Scheduler.
 - Si un feed iCal configurado responde con error o contenido inválido, ese apartamento conserva su última proyección válida de `blockedDates` y la sincronización responde con estado parcial para permitir reintentos.
+- Los bloqueos locales no dependen de Airbnb o Booking: sobreviven a una sincronización iCal y se combinan con reservas confirmadas y fechas externas.
 - `POST /api/sync-ical` acepta dos formas de autenticación:
   - Bearer token Firebase de un administrador para el disparo manual desde la UI.
   - Bearer token OIDC de Cloud Scheduler validado con `CLOUD_SCHEDULER_OIDC_AUDIENCE` y `CLOUD_SCHEDULER_OIDC_EMAIL`.
 - El endpoint `GET /api/rooms/:roomId/ical` exporta la proyección completa de fechas bloqueadas del apartamento, incluyendo reservas directas y fechas importadas desde Airbnb/Booking, para pegarla en ambas plataformas.
+- Después de cancelar una reserva, el frontend llama a `POST /api/rooms/:roomId/rebuild-availability` con el token del huésped; el backend verifica que la reserva le pertenezca y reconstruye `blockedDates` sin exponer las reservas de otros huéspedes.

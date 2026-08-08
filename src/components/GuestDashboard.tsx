@@ -4,7 +4,6 @@ import {
   collection,
   getDocs,
   doc,
-  getDoc,
   setDoc,
   updateDoc,
   query,
@@ -329,7 +328,7 @@ export default function GuestDashboard({
       const roomDocRef = doc(db, "rooms", activeRoom.id);
       
       // Update local state and backend
-      const updatedBlockedList = [...activeRoom.blockedDates, ...datesToBlock];
+      const updatedBlockedList = [...new Set([...activeRoom.blockedDates, ...datesToBlock])].sort();
       await updateDoc(roomDocRef, {
         blockedDates: updatedBlockedList
       });
@@ -379,25 +378,30 @@ export default function GuestDashboard({
   };
 
   // Cancel reservation
-  const handleCancelBooking = async (b: any) => {
+  const handleCancelBooking = async (b: Booking) => {
     if (!window.confirm("¿Está seguro de cancelar esta reserva? Las fechas volverán a liberarse.")) {
       return;
     }
+    let cancellationSaved = false;
     try {
       // 1. Set status as cancelled
       await updateDoc(doc(db, "bookings", b.id), { status: "cancelled" });
+      cancellationSaved = true;
 
-      // 2. Release dates of room
-      const roomDocRef = doc(db, "rooms", b.roomId);
-      const roomSnap = await getDoc(roomDocRef);
-      if (roomSnap.exists()) {
-        const roomData = roomSnap.data() as Room;
-
-        // Generate date block to remove
-        const datesToRemove = datesForRange(b.checkIn, b.checkOut);
-
-        const filteredBlocked = roomData.blockedDates.filter(d => !datesToRemove.includes(d));
-        await updateDoc(roomDocRef, { blockedDates: filteredBlocked });
+      // 2. Rebuild the public projection server-side. The guest is not allowed
+      // to query other guests' bookings from Firestore.
+      const idToken = await auth.currentUser?.getIdToken();
+      const response = await fetch(getApiUrl(`/api/rooms/${encodeURIComponent(b.roomId)}/rebuild-availability`), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        },
+        body: JSON.stringify({ bookingId: b.id }),
+      });
+      const responseData = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(responseData.error || "No se pudo actualizar la disponibilidad del apartamento.");
       }
 
       alert("Reserva cancelada exitosamente.");
@@ -405,6 +409,12 @@ export default function GuestDashboard({
       fetchMyBookings();
     } catch (err: any) {
       console.error("Cancel failed:", err);
+      if (cancellationSaved) {
+        alert("La reserva fue cancelada, pero no se pudo actualizar la disponibilidad. El administrador puede sincronizarla desde el panel.");
+        fetchMyBookings();
+      } else {
+        alert("No se pudo cancelar la reserva. Inténtelo de nuevo.");
+      }
     }
   };
 

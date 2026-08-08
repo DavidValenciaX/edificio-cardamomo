@@ -6,7 +6,9 @@ import {
   getDoc, 
   setDoc, 
   updateDoc, 
-  deleteDoc 
+  deleteDoc,
+  query,
+  where,
 } from "firebase/firestore";
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { auth, db, handleFirestoreError, OperationType, storage } from "../lib/firebase";
@@ -14,6 +16,7 @@ import { getApiUrl, getPublicApiOrigin } from "../lib/api";
 import { buildDefaultRoomFeatures, DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 import { getOccupancyPriceOptions, getRoomStartingPrice } from "../lib/pricing";
 import { buildAvailabilityDateSets, formatAvailabilityDate, getAvailabilityStatus, getBookingsForDate, getCalendarDays, type AvailabilityStatus } from "../lib/availability";
+import { datesForRange, normalizeDateList } from "../lib/ical";
 import { Booking, PublicContent, Room, RoomFeatures, RoomIntegration, Settings } from "../types";
 import PublicContentEditor from "./PublicContentEditor";
 import {
@@ -127,6 +130,8 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
   const [airbnbUrl, setAirbnbUrl] = useState("");
   const [bookingUrl, setBookingUrl] = useState("");
   const [blockedDates, setBlockedDates] = useState<string[]>([]);
+  const [manualBlockedDates, setManualBlockedDates] = useState<string[]>([]);
+  const [externalBlockedDates, setExternalBlockedDates] = useState<string[]>([]);
 
   // Manual blockers scheduler
   const [blockerRoomId, setBlockerRoomId] = useState("");
@@ -457,6 +462,8 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       setAirbnbUrl(integration?.airbnbIcalUrl || legacyRoom.airbnb_ical_url || "");
       setBookingUrl(integration?.bookingIcalUrl || legacyRoom.booking_ical_url || "");
       setBlockedDates([...room.blockedDates]);
+      setManualBlockedDates([...room.manualBlockedDates]);
+      setExternalBlockedDates([...room.externalBlockedDates]);
     } else {
       const newRoomRef = doc(collection(db, "rooms"));
       setEditingRoom({});
@@ -475,6 +482,8 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       setAirbnbUrl("");
       setBookingUrl("");
       setBlockedDates([]);
+      setManualBlockedDates([]);
+      setExternalBlockedDates([]);
     }
   };
 
@@ -542,7 +551,9 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       },
       features: roomFeatures,
       images: roomImages,
-      blockedDates: blockedDates
+      blockedDates: blockedDates,
+      manualBlockedDates,
+      externalBlockedDates,
     };
     const nextIntegration = {
       roomId: roomIdInput,
@@ -674,18 +685,45 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       const roomRef = doc(db, "rooms", blockerRoomId);
       const roomSnap = await getDoc(roomRef);
       if (roomSnap.exists()) {
-        const rData = roomSnap.data() as Room;
-        let blocked = rData.blockedDates || [];
-        if (blocked.includes(manualBlockDate)) {
-          // Release
-          blocked = blocked.filter(d => d !== manualBlockDate);
+        const rData = roomSnap.data() as Partial<Room>;
+        const currentBlocked = Array.isArray(rData.blockedDates) ? rData.blockedDates : [];
+        const currentManual = Array.isArray(rData.manualBlockedDates)
+          ? rData.manualBlockedDates
+          : currentBlocked;
+        const currentExternal = Array.isArray(rData.externalBlockedDates)
+          ? rData.externalBlockedDates
+          : [];
+        const confirmedBookingsSnap = await getDocs(query(
+          collection(db, "bookings"),
+          where("roomId", "==", blockerRoomId),
+        ));
+        const confirmedReservationDates = confirmedBookingsSnap.docs
+          .map((bookingDoc) => bookingDoc.data() as Booking)
+          .filter((booking) => booking.status === "confirmed")
+          .flatMap((booking) => datesForRange(booking.checkIn, booking.checkOut));
+        const isManualBlock = currentManual.includes(manualBlockDate);
+        const nextManual = isManualBlock
+          ? currentManual.filter((date) => date !== manualBlockDate)
+          : [...currentManual, manualBlockDate];
+        const nextBlocked = new Set([
+          ...nextManual,
+          ...currentExternal,
+          ...confirmedReservationDates,
+        ]);
+
+        if (isManualBlock && !currentExternal.includes(manualBlockDate) && !confirmedReservationDates.includes(manualBlockDate)) {
+          nextBlocked.delete(manualBlockDate);
           alert(`Fecha ${manualBlockDate} liberada.`);
+        } else if (isManualBlock) {
+          alert(`Fecha ${manualBlockDate} liberada como bloqueo local; permanece ocupada por otra fuente.`);
         } else {
-          // Add block
-          blocked = [...blocked, manualBlockDate].sort();
           alert(`Fecha ${manualBlockDate} bloqueada manualmente.`);
         }
-        await updateDoc(roomRef, { blockedDates: blocked });
+
+        await updateDoc(roomRef, {
+          blockedDates: normalizeDateList([...nextBlocked]),
+          manualBlockedDates: normalizeDateList(nextManual),
+        });
         onRefreshRooms();
         setManualBlockDate("");
       }
@@ -734,6 +772,8 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
         features: roomFeatures,
         images: roomImages,
         blockedDates,
+        manualBlockedDates,
+        externalBlockedDates,
       })
     : [];
 
@@ -1397,9 +1437,9 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                 </section>
 
                 <section className="rounded-3xl border border-warm-border bg-white p-6 shadow-sm">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Bloqueo manual</p>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-secondary">Bloqueo local</p>
                   <h3 className="mt-2 font-display text-2xl font-semibold text-dark">Mantenimiento y fechas especiales</h3>
-                  <p className="mt-2 text-sm leading-6 text-dark-muted">Bloquea una fecha por mantenimiento o vuelve a liberarla desde aquí.</p>
+                  <p className="mt-2 text-sm leading-6 text-dark-muted">Bloquea una fecha desde Cardamomo. Estos bloqueos se conservan aunque sincronices Airbnb o Booking.com.</p>
                   <form onSubmit={handleAddManualBlock} className="mt-6 space-y-4">
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>

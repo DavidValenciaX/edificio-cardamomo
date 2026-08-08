@@ -96,7 +96,9 @@ service cloud.firestore {
           )
         )
         && data.images is list && data.images.size() <= 10
-        && data.blockedDates is list && data.blockedDates.size() <= 1000;
+        && data.blockedDates is list && data.blockedDates.size() <= 1000
+        && (!data.keys().hasAny(['manualBlockedDates']) || (data.manualBlockedDates is list && data.manualBlockedDates.size() <= 1000))
+        && (!data.keys().hasAny(['externalBlockedDates']) || (data.externalBlockedDates is list && data.externalBlockedDates.size() <= 1000));
     }
 
     function isValidRoomIntegration(data, roomId) {

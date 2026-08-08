@@ -52,7 +52,9 @@
           "required": ["bedrooms", "beds", "hasSofaBed", "hasAirConditioning", "hasWifi", "hasTv", "hasFullKitchen", "hasFridge", "hasPrivateBathroom"]
         },
         "images": { "type": "array", "description": "List of URLs for photos of the room" },
-        "blockedDates": { "type": "array", "description": "List of dates (YYYY-MM-DD) that are occupied/blocked" }
+        "blockedDates": { "type": "array", "description": "Complete public projection of occupied and blocked dates" },
+        "manualBlockedDates": { "type": "array", "description": "Dates blocked manually from the admin panel" },
+        "externalBlockedDates": { "type": "array", "description": "Dates imported from Airbnb/Booking iCal feeds" }
       },
       "required": ["id", "name", "pricing", "capacity", "features"]
     },

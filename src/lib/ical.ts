@@ -7,6 +7,8 @@ export interface ICalSyncInput {
   roomId: string;
   roomName: string;
   existingBlockedDates: string[];
+  manualBlockedDates?: string[];
+  existingExternalBlockedDates?: string[];
   confirmedBookings: ICalBookingRange[];
   airbnbIcalUrl?: string;
   bookingIcalUrl?: string;
@@ -18,6 +20,7 @@ export interface ICalSyncResult {
   shouldUpdate: boolean;
   status: "synced" | "skipped";
   blockedDates: string[];
+  externalBlockedDates: string[];
   hasAirbnbIcal: boolean;
   hasBookingIcal: boolean;
   errors: string[];
@@ -141,7 +144,7 @@ export function parseICalContent(icalText: string): string[] {
   return [...new Set(blockedDates)].sort();
 }
 
-function normalizeDateList(dates: string[]): string[] {
+export function normalizeDateList(dates: string[]): string[] {
   return [...new Set(dates.filter(isValidDateString))].sort();
 }
 
@@ -231,6 +234,8 @@ export async function syncRoomAvailability(
   ];
   const errors: string[] = [];
   const nextBlockedDates: string[] = [];
+  const manualBlockedDates = normalizeDateList(input.manualBlockedDates || []);
+  const nextExternalBlockedDates: string[] = [];
 
   for (const booking of input.confirmedBookings) {
     nextBlockedDates.push(...datesForRange(booking.checkIn, booking.checkOut));
@@ -240,7 +245,9 @@ export async function syncRoomAvailability(
     if (!source.url) continue;
 
     try {
-      nextBlockedDates.push(...await fetchSourceDates(source.name, source.url, fetcher));
+      const sourceDates = await fetchSourceDates(source.name, source.url, fetcher);
+      nextExternalBlockedDates.push(...sourceDates);
+      nextBlockedDates.push(...sourceDates);
     } catch (error) {
       errors.push(error instanceof Error ? error.message : `${source.name} no pudo sincronizarse.`);
     }
@@ -253,11 +260,14 @@ export async function syncRoomAvailability(
       shouldUpdate: false,
       status: "skipped",
       blockedDates: normalizeDateList(input.existingBlockedDates),
+      externalBlockedDates: normalizeDateList(input.existingExternalBlockedDates || []),
       hasAirbnbIcal: Boolean(externalSources[0].url),
       hasBookingIcal: Boolean(externalSources[1].url),
       errors,
     };
   }
+
+  nextBlockedDates.push(...manualBlockedDates);
 
   return {
     roomId: input.roomId,
@@ -265,6 +275,7 @@ export async function syncRoomAvailability(
     shouldUpdate: true,
     status: "synced",
     blockedDates: normalizeDateList(nextBlockedDates),
+    externalBlockedDates: normalizeDateList(nextExternalBlockedDates),
     hasAirbnbIcal: Boolean(externalSources[0].url),
     hasBookingIcal: Boolean(externalSources[1].url),
     errors: [],

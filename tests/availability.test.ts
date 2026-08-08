@@ -31,6 +31,8 @@ const room: Room = {
   },
   images: [],
   blockedDates: ["2026-08-14", "2026-08-20"],
+  manualBlockedDates: ["2026-08-14", "2026-08-20"],
+  externalBlockedDates: [],
 };
 
 const confirmedBooking: Booking = {

@@ -42,6 +42,8 @@ export interface Room {
   features: RoomFeatures;
   images: string[];
   blockedDates: string[]; // Formato YYYY-MM-DD
+  manualBlockedDates: string[]; // Bloqueos creados desde el panel administrativo
+  externalBlockedDates: string[]; // Proyección de feeds iCal externos
 }
 
 export interface RoomIntegration {

@@ -112,6 +112,42 @@ test("syncRoomAvailability merges local and external dates and deduplicates them
     "2026-08-20",
     "2026-08-21",
   ]);
+  assert.deepEqual(result.externalBlockedDates, [
+    "2026-08-10",
+    "2026-08-11",
+    "2026-08-12",
+    "2026-08-13",
+    "2026-08-14",
+  ]);
+});
+
+test("syncRoomAvailability preserves manual blocks in the rebuilt projection", async () => {
+  const result = await syncRoomAvailability(
+    {
+      roomId: "apartamento-104",
+      roomName: "Apartamento 104",
+      existingBlockedDates: [],
+      manualBlockedDates: ["2026-08-20"],
+      existingExternalBlockedDates: ["2026-08-01"],
+      confirmedBookings: [
+        {checkIn: "2026-08-10", checkOut: "2026-08-12"},
+      ],
+      airbnbIcalUrl: "https://example.test/airbnb.ics",
+    },
+    async () => makeResponse(airbnbFeed),
+  );
+
+  assert.deepEqual(result.blockedDates, [
+    "2026-08-10",
+    "2026-08-11",
+    "2026-08-12",
+    "2026-08-20",
+  ]);
+  assert.deepEqual(result.externalBlockedDates, [
+    "2026-08-10",
+    "2026-08-11",
+    "2026-08-12",
+  ]);
 });
 
 test("syncRoomAvailability preserves the last projection when a configured feed fails", async () => {

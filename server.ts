@@ -11,7 +11,7 @@ import {
 } from "firebase-admin";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
-import { buildICalContent, syncRoomAvailability } from "./src/lib/ical.ts";
+import { buildICalContent, datesForRange, normalizeDateList, syncRoomAvailability } from "./src/lib/ical.ts";
 
 function readRequiredServerEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -217,6 +217,42 @@ async function loadRoomIntegration(roomId: string, roomData: any): Promise<RoomI
   return legacyIntegration;
 }
 
+async function rebuildRoomBlockedDates(roomId: string): Promise<string[]> {
+  const roomRef = db.collection("rooms").doc(roomId);
+  const roomSnap = await roomRef.get();
+  if (!roomSnap.exists) {
+    throw new Error("Apartamento no encontrado.");
+  }
+
+  const roomData = roomSnap.data() || {};
+  const existingBlockedDates = Array.isArray(roomData.blockedDates)
+    ? roomData.blockedDates.filter((date: unknown): date is string => typeof date === "string")
+    : [];
+  const manualBlockedDates = Array.isArray(roomData.manualBlockedDates)
+    ? roomData.manualBlockedDates.filter((date: unknown): date is string => typeof date === "string")
+    : existingBlockedDates;
+  const externalBlockedDates = Array.isArray(roomData.externalBlockedDates)
+    ? roomData.externalBlockedDates.filter((date: unknown): date is string => typeof date === "string")
+    : [];
+  const confirmedBookingsSnap = await db
+    .collection("bookings")
+    .where("roomId", "==", roomId)
+    .where("status", "==", "confirmed")
+    .get();
+  const confirmedReservationDates = confirmedBookingsSnap.docs.flatMap((bookingDoc) => {
+    const booking = bookingDoc.data();
+    return datesForRange(booking.checkIn, booking.checkOut);
+  });
+  const nextBlockedDates = normalizeDateList([
+    ...manualBlockedDates,
+    ...externalBlockedDates,
+    ...confirmedReservationDates,
+  ]);
+
+  await roomRef.update({ blockedDates: nextBlockedDates });
+  return nextBlockedDates;
+}
+
 // -------------------------------------------------------------
 // 0. ENDPOINT: Consolidate anonymous temporary guests into accounts
 // -------------------------------------------------------------
@@ -338,6 +374,46 @@ app.get("/api/rooms/:roomId/ical", async (req, res) => {
 });
 
 // -------------------------------------------------------------------------
+// 1b. ENDPOINT: Rebuild availability after an authenticated guest cancellation
+// -------------------------------------------------------------------------
+app.post("/api/rooms/:roomId/rebuild-availability", async (req, res) => {
+  const bearerToken = extractBearerToken(req);
+  const bookingId = typeof req.body?.bookingId === "string" ? req.body.bookingId.trim() : "";
+
+  if (!bearerToken) {
+    return res.status(401).json({ error: "La solicitud requiere un token de autenticación." });
+  }
+  if (!bookingId) {
+    return res.status(400).json({ error: "La solicitud requiere el ID de la reserva." });
+  }
+
+  try {
+    const decodedToken = await getAuth().verifyIdToken(bearerToken);
+    const bookingSnap = await db.collection("bookings").doc(bookingId).get();
+    if (!bookingSnap.exists) {
+      return res.status(404).json({ error: "Reserva no encontrada." });
+    }
+
+    const booking = bookingSnap.data() || {};
+    if (booking.roomId !== req.params.roomId) {
+      return res.status(400).json({ error: "La reserva no corresponde al apartamento indicado." });
+    }
+    if (booking.userId !== decodedToken.uid) {
+      return res.status(403).json({ error: "No autorizado para actualizar esta reserva." });
+    }
+    if (booking.status !== "cancelled") {
+      return res.status(409).json({ error: "La reserva todavía no está cancelada." });
+    }
+
+    const blockedDates = await rebuildRoomBlockedDates(req.params.roomId);
+    return res.json({ status: "rebuilt", blockedDatesCount: blockedDates.length });
+  } catch (error: any) {
+    console.error("Room availability rebuild failed:", error);
+    return res.status(500).json({ error: error.message || "No se pudo reconstruir la disponibilidad." });
+  }
+});
+
+// -------------------------------------------------------------------------
 // 2. ENDPOINT: Sync External iCal URLs into Firestore (The scheduled cron)
 // -------------------------------------------------------------------------
 app.post("/api/sync-ical", authorizeIcalSyncRequest, async (req, res) => {
@@ -358,10 +434,22 @@ app.post("/api/sync-ical", authorizeIcalSyncRequest, async (req, res) => {
         .where("status", "==", "confirmed")
         .get();
 
+      const existingBlockedDates = Array.isArray(room.blockedDates)
+        ? room.blockedDates.filter((date: unknown): date is string => typeof date === "string")
+        : [];
+      const manualBlockedDates = Array.isArray(room.manualBlockedDates)
+        ? room.manualBlockedDates.filter((date: unknown): date is string => typeof date === "string")
+        : existingBlockedDates;
+      const existingExternalBlockedDates = Array.isArray(room.externalBlockedDates)
+        ? room.externalBlockedDates.filter((date: unknown): date is string => typeof date === "string")
+        : [];
+
       const syncResult = await syncRoomAvailability({
         roomId,
         roomName: room.name || roomId,
-        existingBlockedDates: Array.isArray(room.blockedDates) ? room.blockedDates : [],
+        existingBlockedDates,
+        manualBlockedDates,
+        existingExternalBlockedDates,
         confirmedBookings: bookingsSnap.docs.map((bookingDoc) => {
           const booking = bookingDoc.data();
           return {
@@ -380,6 +468,7 @@ app.post("/api/sync-ical", authorizeIcalSyncRequest, async (req, res) => {
           roomName: room.name || roomId,
           status: syncResult.status,
           blockedDatesCount: syncResult.blockedDates.length,
+          externalBlockedDatesCount: syncResult.externalBlockedDates.length,
           hasAirbnbIcal: syncResult.hasAirbnbIcal,
           hasBookingIcal: syncResult.hasBookingIcal,
           errors: syncResult.errors,
@@ -388,13 +477,18 @@ app.post("/api/sync-ical", authorizeIcalSyncRequest, async (req, res) => {
       }
 
       // Update only after every configured external source succeeded.
-      await db.collection("rooms").doc(roomId).update({ blockedDates: syncResult.blockedDates });
+      await db.collection("rooms").doc(roomId).update({
+        blockedDates: syncResult.blockedDates,
+        manualBlockedDates: normalizeDateList(manualBlockedDates),
+        externalBlockedDates: syncResult.externalBlockedDates,
+      });
 
       results.push({
         roomId,
         roomName: room.name || roomId,
         status: syncResult.status,
         blockedDatesCount: syncResult.blockedDates.length,
+        externalBlockedDatesCount: syncResult.externalBlockedDates.length,
         hasAirbnbIcal: syncResult.hasAirbnbIcal,
         hasBookingIcal: syncResult.hasBookingIcal,
         errors: [],

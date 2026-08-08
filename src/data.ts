@@ -52,6 +52,15 @@ export function normalizeRoom(raw: unknown, id: string): Room {
     basePricePerNight: asNonNegativeNumber(rawPricing.basePricePerNight, legacyPricePerNight),
     extraGuestPricePerNight: asNonNegativeNumber(rawPricing.extraGuestPricePerNight, 0),
   };
+  const blockedDates = Array.isArray(input.blockedDates)
+    ? input.blockedDates.filter((date): date is string => typeof date === "string")
+    : [];
+  const manualBlockedDates = Array.isArray(input.manualBlockedDates)
+    ? input.manualBlockedDates.filter((date): date is string => typeof date === "string")
+    : blockedDates;
+  const externalBlockedDates = Array.isArray(input.externalBlockedDates)
+    ? input.externalBlockedDates.filter((date): date is string => typeof date === "string")
+    : [];
 
   return {
     id,
@@ -71,7 +80,9 @@ export function normalizeRoom(raw: unknown, id: string): Room {
       hasPrivateBathroom: asBoolean(rawFeatures.hasPrivateBathroom, defaults.hasPrivateBathroom),
     },
     images: Array.isArray(input.images) ? input.images.filter((image): image is string => typeof image === "string") : [],
-    blockedDates: Array.isArray(input.blockedDates) ? input.blockedDates.filter((date): date is string => typeof date === "string") : [],
+    blockedDates,
+    manualBlockedDates,
+    externalBlockedDates,
   };
 }
 
