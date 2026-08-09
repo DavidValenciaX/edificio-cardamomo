@@ -13,8 +13,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { PublicPolicies, PublicContent, Room } from "../types";
-import { DEFAULT_HERO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
+import { DEFAULT_HERO_PLACEHOLDER } from "../data";
 import { getOccupancyPriceOptions, getRoomStartingPrice } from "../lib/pricing";
+import RoomImageGallery from "./RoomImageGallery";
 
 interface LandingPageProps {
   rooms: Room[];
@@ -180,15 +181,13 @@ export default function LandingPage({
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
               {rooms.map((room) => (
                 <article key={room.id} className="card-lift group overflow-hidden rounded-3xl border border-warm-border bg-white shadow-[0_12px_32px_rgba(64,48,29,0.07)]">
-                  <div className="relative aspect-[4/3] overflow-hidden bg-warm-card">
-                    <img
-                      src={room.images[0] || DEFAULT_ROOM_IMAGE_PLACEHOLDER}
-                      alt={`Interior de ${room.name}`}
-                      referrerPolicy="no-referrer"
-                      width={640}
-                      height={480}
-                      loading="lazy"
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                  <div className="relative">
+                    <RoomImageGallery
+                      roomId={room.id}
+                      roomName={room.name}
+                      images={room.images}
+                      compact
+                      className="rounded-t-3xl"
                     />
                     <span className="absolute left-4 top-4 rounded-full bg-primary px-3 py-1.5 text-xs font-bold uppercase tracking-[0.12em] text-warm-bg">
                       Hasta {room.capacity} {room.capacity === 1 ? "persona" : "personas"}

@@ -7,6 +7,7 @@ interface RoomImageGalleryProps {
   roomName: string;
   images: string[];
   className?: string;
+  compact?: boolean;
 }
 
 function preloadImage(imageUrl: string, cache: Map<string, Promise<void>>): Promise<void> {
@@ -34,7 +35,7 @@ function preloadImage(imageUrl: string, cache: Map<string, Promise<void>>): Prom
   return promise;
 }
 
-export default function RoomImageGallery({ roomId, roomName, images, className = "" }: RoomImageGalleryProps) {
+export default function RoomImageGallery({ roomId, roomName, images, className = "", compact = false }: RoomImageGalleryProps) {
   const normalizedImages = useMemo(() => images.filter(Boolean), [images]);
   const galleryImages = useMemo(
     () => normalizedImages.length > 0 ? normalizedImages : [DEFAULT_ROOM_IMAGE_PLACEHOLDER],
@@ -44,6 +45,7 @@ export default function RoomImageGallery({ roomId, roomName, images, className =
   const [activeIndex, setActiveIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [imageLoadError, setImageLoadError] = useState(false);
+  const [shouldPreloadAdjacent, setShouldPreloadAdjacent] = useState(!compact);
   const hasMultipleImages = galleryImages.length > 1;
   const imageCacheRef = useRef(new Map<string, Promise<void>>());
   const requestIdRef = useRef(0);
@@ -72,12 +74,13 @@ export default function RoomImageGallery({ roomId, roomName, images, className =
 
   useEffect(() => {
     if (!hasMultipleImages) return;
+    if (!shouldPreloadAdjacent) return;
 
     const nextIndex = (safeActiveIndex + 1) % galleryImages.length;
     const previousIndex = (safeActiveIndex - 1 + galleryImages.length) % galleryImages.length;
     void preload(galleryImages[nextIndex]).catch(() => undefined);
     void preload(galleryImages[previousIndex]).catch(() => undefined);
-  }, [galleryKey, galleryImages, hasMultipleImages, preload, safeActiveIndex]);
+  }, [galleryKey, galleryImages, hasMultipleImages, preload, safeActiveIndex, shouldPreloadAdjacent]);
 
   const requestImage = useCallback((nextIndex: number) => {
     if (!hasMultipleImages || nextIndex === safeActiveIndex || isLoading) return;
@@ -135,18 +138,21 @@ export default function RoomImageGallery({ roomId, roomName, images, className =
       aria-label={`Fotos de ${roomName}`}
       aria-busy={isLoading}
       tabIndex={0}
+      onMouseEnter={() => setShouldPreloadAdjacent(true)}
+      onFocus={() => setShouldPreloadAdjacent(true)}
+      onTouchStart={() => setShouldPreloadAdjacent(true)}
       onKeyDown={handleKeyDown}
       className={`relative overflow-hidden bg-warm-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2 ${className}`}
     >
-      <div className="relative aspect-[16/10] sm:aspect-[3/2]">
+      <div className={`relative ${compact ? "aspect-[4/3]" : "aspect-[16/10] sm:aspect-[3/2]"}`}>
         <img
           src={currentImage}
           alt={imageAlt}
           referrerPolicy="no-referrer"
           width={960}
           height={600}
-          loading="eager"
-          fetchPriority={safeActiveIndex === 0 ? "high" : "auto"}
+          loading={compact ? "lazy" : "eager"}
+          fetchPriority={compact ? "auto" : safeActiveIndex === 0 ? "high" : "auto"}
           decoding="async"
           onError={() => setImageLoadError(true)}
           className="h-full w-full object-cover object-center"
@@ -195,7 +201,7 @@ export default function RoomImageGallery({ roomId, roomName, images, className =
         )}
       </div>
 
-      {hasMultipleImages && (
+      {hasMultipleImages && !compact && (
         <div className="flex items-center justify-center gap-2 border-t border-warm-border bg-white px-4 py-3" aria-label="Seleccionar foto">
           {galleryImages.map((image, index) => (
             <button
