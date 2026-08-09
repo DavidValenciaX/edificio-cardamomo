@@ -10,6 +10,7 @@ import {
 } from "firebase/firestore";
 import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { auth, db, handleFirestoreError, OperationType, storage } from "../lib/firebase";
+import { alerts } from "../lib/alerts";
 import { getApiUrl, getPublicApiOrigin } from "../lib/api";
 import { buildDefaultRoomFeatures, DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
 import { optimizeRoomImage } from "../lib/imageOptimization";
@@ -444,7 +445,10 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
         heroBannerUrl: settings.heroBannerUrl,
         notificationConfig: settings.notificationConfig
       }, { merge: true });
-      alert("Configuraciones de alertas actualizadas de forma segura en Firestore.");
+      await alerts.success({
+        title: "Configuración actualizada",
+        text: "Configuraciones de alertas actualizadas de forma segura en Firestore.",
+      });
     } catch (err: any) {
       console.error("Save config error:", err);
       handleFirestoreError(err, OperationType.UPDATE, "settings/global");
@@ -549,7 +553,10 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       || roomFeatures.bedrooms <= 0
       || roomFeatures.beds <= 0
     ) {
-      alert("Por favor complete los campos obligatorios.");
+      await alerts.warning({
+        title: "Campos obligatorios",
+        text: "Por favor complete los campos obligatorios.",
+      });
       return;
     }
 
@@ -585,7 +592,10 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       for (const imageUrl of pendingRoomImageDeletes) {
         await deleteStorageFileByUrl(imageUrl);
       }
-      alert("Apartamento guardado con éxito.");
+      await alerts.success({
+        title: "Apartamento guardado",
+        text: "Apartamento guardado con éxito.",
+      });
       setPendingRoomImageDeletes([]);
       setOriginalRoomImages([]);
       setEditingRoom(null);
@@ -598,7 +608,13 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
   };
 
   const handleDeleteRoom = async (roomId: string) => {
-    if (!window.confirm("¿Está seguro de eliminar este apartamento definitivamente?")) {
+    const confirmation = await alerts.confirm({
+      title: "Eliminar apartamento",
+      text: "¿Está seguro de eliminar este apartamento definitivamente?",
+      confirmButtonText: "Sí, eliminar",
+      cancelButtonText: "Cancelar",
+    });
+    if (!confirmation.isConfirmed) {
       return;
     }
     try {
@@ -610,7 +626,10 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
           await deleteStorageFileByUrl(imageUrl);
         }
       }
-      alert("Apartamento eliminado.");
+      await alerts.success({
+        title: "Apartamento eliminado",
+        text: "Apartamento eliminado.",
+      });
       onRefreshRooms();
       void fetchRoomIntegrations();
     } catch (err: any) {

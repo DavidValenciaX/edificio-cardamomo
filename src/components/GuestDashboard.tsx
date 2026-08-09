@@ -13,6 +13,7 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "../lib/firebase";
+import { alerts } from "../lib/alerts";
 import { getApiUrl } from "../lib/api";
 import { datesForRange } from "../lib/ical";
 import { prepareBookingDateReservation } from "../lib/availability";
@@ -412,7 +413,13 @@ export default function GuestDashboard({
 
   // Cancel reservation
   const handleCancelBooking = async (b: Booking) => {
-    if (!window.confirm("¿Está seguro de cancelar esta reserva? Las fechas volverán a liberarse.")) {
+    const confirmation = await alerts.confirm({
+      title: "Cancelar reserva",
+      text: "¿Está seguro de cancelar esta reserva? Las fechas volverán a liberarse.",
+      confirmButtonText: "Sí, cancelar reserva",
+      cancelButtonText: "Conservar reserva",
+    });
+    if (!confirmation.isConfirmed) {
       return;
     }
     let cancellationSaved = false;
@@ -437,16 +444,24 @@ export default function GuestDashboard({
         throw new Error(responseData.error || "No se pudo actualizar la disponibilidad del apartamento.");
       }
 
-      alert("Reserva cancelada exitosamente.");
+      await alerts.success({
+        title: "Reserva cancelada",
+        text: "Reserva cancelada exitosamente.",
+      });
       onRefreshRooms();
       fetchMyBookings();
     } catch (err: any) {
       console.error("Cancel failed:", err);
       if (cancellationSaved) {
-        alert("La reserva fue cancelada, pero no se pudo actualizar la disponibilidad. El administrador puede sincronizarla desde el panel.");
+        await alerts.warning({
+          title: "Cancelación parcial",
+          text: "La reserva fue cancelada, pero no se pudo actualizar la disponibilidad. El administrador puede sincronizarla desde el panel.",
+        });
         fetchMyBookings();
       } else {
-        alert("No se pudo cancelar la reserva. Inténtelo de nuevo.");
+        await alerts.error({
+          text: "No se pudo cancelar la reserva. Inténtelo de nuevo.",
+        });
       }
     }
   };

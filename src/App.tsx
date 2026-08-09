@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, getDocs, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "./lib/firebase";
+import { alerts } from "./lib/alerts";
 import { omitUndefinedFields } from "./lib/firestoreData";
 import { UserProfile, Room, Settings, PublicContent } from "./types";
 import { buildDefaultPublicContent, DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, normalizePublicContent, normalizeRoom } from "./data";
@@ -210,7 +211,10 @@ export default function App() {
       setCurrentRole('guest');
       setGuestView("landing");
       setSelectedRoomId(null);
-      alert("Sesión cerrada correctamente.");
+      await alerts.success({
+        title: "Sesión cerrada",
+        text: "Sesión cerrada correctamente.",
+      });
     } catch (err) {
       console.error("Signout error:", err);
     }
