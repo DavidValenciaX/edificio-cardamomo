@@ -132,6 +132,11 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
   const [originalRoomImages, setOriginalRoomImages] = useState<string[]>([]);
   const [pendingRoomImageDeletes, setPendingRoomImageDeletes] = useState<string[]>([]);
   const [draggedImageIndex, setDraggedImageIndex] = useState<number | null>(null);
+  const roomImagesScrollerRef = useRef<HTMLDivElement>(null);
+  const [roomImagesScrollState, setRoomImagesScrollState] = useState({
+    canScrollLeft: false,
+    canScrollRight: false,
+  });
   const [airbnbUrl, setAirbnbUrl] = useState("");
   const [bookingUrl, setBookingUrl] = useState("");
   const [blockedDates, setBlockedDates] = useState<string[]>([]);
@@ -404,6 +409,28 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
     }
   }, [activeSection]);
 
+  useEffect(() => {
+    const scroller = roomImagesScrollerRef.current;
+    if (!scroller) return;
+
+    const updateRoomImagesScrollState = () => {
+      const maxScrollLeft = scroller.scrollWidth - scroller.clientWidth;
+      setRoomImagesScrollState({
+        canScrollLeft: scroller.scrollLeft > 4,
+        canScrollRight: maxScrollLeft - scroller.scrollLeft > 4,
+      });
+    };
+
+    updateRoomImagesScrollState();
+    scroller.addEventListener("scroll", updateRoomImagesScrollState, { passive: true });
+    window.addEventListener("resize", updateRoomImagesScrollState);
+
+    return () => {
+      scroller.removeEventListener("scroll", updateRoomImagesScrollState);
+      window.removeEventListener("resize", updateRoomImagesScrollState);
+    };
+  }, [roomImages.length]);
+
   // Handle iCal Manual sync triggering
   const triggerManualICalSync = async () => {
     setSyncLoading(true);
@@ -675,6 +702,18 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       const [movedImage] = nextImages.splice(fromIndex, 1);
       nextImages.splice(toIndex, 0, movedImage);
       return nextImages;
+    });
+  };
+
+  const scrollRoomImages = (direction: "previous" | "next") => {
+    const scroller = roomImagesScrollerRef.current;
+    if (!scroller) return;
+
+    const scrollDistance = Math.max(scroller.clientWidth * 0.8, 240);
+    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+    scroller.scrollBy({
+      left: direction === "next" ? scrollDistance : -scrollDistance,
+      behavior,
     });
   };
 
@@ -1331,7 +1370,38 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                       </label>
                     </div>
                     {roomImagesUploadError && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">{roomImagesUploadError}</p>}
-                    <div className="mt-5 flex gap-3 overflow-x-auto pb-2">
+                    <div className="mt-5 flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold leading-5 text-dark-muted">
+                        {roomImages.length > 0
+                          ? `${roomImages.length} de 10 fotos · Usa las flechas o desliza para ver todas.`
+                          : "Puedes subir hasta 10 fotos."}
+                      </p>
+                      {roomImages.length > 0 && (
+                        <div className="flex shrink-0 gap-2" role="group" aria-label="Navegar por las fotos">
+                          <button
+                            type="button"
+                            onClick={() => scrollRoomImages("previous")}
+                            disabled={!roomImagesScrollState.canScrollLeft}
+                            className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-warm-border bg-white text-secondary transition-colors hover:bg-warm-card disabled:cursor-not-allowed disabled:opacity-35"
+                            aria-controls="room-image-list"
+                            aria-label="Ver fotos anteriores"
+                          >
+                            <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => scrollRoomImages("next")}
+                            disabled={!roomImagesScrollState.canScrollRight}
+                            className="flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-warm-border bg-white text-secondary transition-colors hover:bg-warm-card disabled:cursor-not-allowed disabled:opacity-35"
+                            aria-controls="room-image-list"
+                            aria-label="Ver fotos siguientes"
+                          >
+                            <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div ref={roomImagesScrollerRef} id="room-image-list" className="room-image-scroller mt-3 flex touch-pan-x snap-x snap-mandatory gap-3 overflow-x-auto pb-3 pr-1">
                       {roomImages.length === 0 && <div className="w-full rounded-2xl border border-dashed border-warm-border bg-white px-4 py-8 text-center text-sm text-dark-muted">Aún no has subido fotos.</div>}
                       {roomImages.map((img, idx) => (
                         <div
@@ -1341,7 +1411,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
                           onDragOver={(event) => event.preventDefault()}
                           onDrop={(event) => handleRoomImageDrop(event, idx)}
                           onDragEnd={() => setDraggedImageIndex(null)}
-                          className={`w-40 shrink-0 overflow-hidden rounded-2xl border bg-white shadow-sm transition-opacity ${draggedImageIndex === idx ? "border-primary opacity-50" : "border-warm-border"}`}
+                          className={`w-40 shrink-0 snap-start cursor-grab select-none overflow-hidden rounded-2xl border bg-white shadow-sm transition-opacity active:cursor-grabbing ${draggedImageIndex === idx ? "border-primary opacity-50" : "border-warm-border"}`}
                         >
                           <div className="relative aspect-square bg-warm-card">
                             <img src={img} alt={`Foto ${idx + 1} del apartamento`} referrerPolicy="no-referrer" width={160} height={160} className="h-full w-full object-cover" />

@@ -40,7 +40,7 @@ function fireWithDefaults(
     icon,
     title: options.title,
     text: options.text,
-    confirmButtonText: options.confirmButtonText,
+    confirmButtonText: options.confirmButtonText ?? "Entendido",
   });
 }
 
