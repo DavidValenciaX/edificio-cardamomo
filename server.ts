@@ -12,6 +12,7 @@ import {
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { buildICalContent, datesForRange, normalizeDateList, syncRoomAvailability } from "./src/lib/ical.ts";
+import type { ICalSourceDiagnostic, ICalSyncSummary } from "./src/lib/ical.ts";
 
 function readRequiredServerEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -94,6 +95,8 @@ interface RoomIntegrationRecord {
   bookingIcalUrl: string;
 }
 
+type ICalSyncAuthMode = "admin_token" | "scheduler_oidc" | "loopback";
+
 function extractBearerToken(req: express.Request): string {
   const authorization = req.headers.authorization || "";
   return authorization.startsWith("Bearer ")
@@ -101,12 +104,52 @@ function extractBearerToken(req: express.Request): string {
     : "";
 }
 
-function isLoopbackRequest(req: express.Request): boolean {
+function getRequestNetworkDetails(req: express.Request): { forwardedFor: string | null; remoteAddress: string | null } {
   const forwardedFor = typeof req.headers["x-forwarded-for"] === "string"
     ? req.headers["x-forwarded-for"].split(",")[0].trim()
     : "";
   const remoteAddress = forwardedFor || req.socket.remoteAddress || "";
+  return {
+    forwardedFor: forwardedFor || null,
+    remoteAddress: remoteAddress || null,
+  };
+}
+
+function isLoopbackRequest(req: express.Request): boolean {
+  const { remoteAddress } = getRequestNetworkDetails(req);
   return remoteAddress === "127.0.0.1" || remoteAddress === "::1" || remoteAddress === "::ffff:127.0.0.1";
+}
+
+function buildIcalSyncRunId(): string {
+  return `sync-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getIcalSyncRequestContext(req: express.Request, authMode?: ICalSyncAuthMode) {
+  const network = getRequestNetworkDetails(req);
+  return {
+    authMode: authMode || "unknown",
+    origin: req.headers.origin || null,
+    referer: req.headers.referer || null,
+    userAgent: req.headers["user-agent"] || null,
+    hasAuthorizationHeader: Boolean(req.headers.authorization),
+    ...network,
+  };
+}
+
+function serializeErrorForLog(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: error.message,
+      stack: error.stack || null,
+      name: error.name,
+    };
+  }
+
+  return {
+    message: String(error),
+    stack: null,
+    name: "UnknownError",
+  };
 }
 
 async function isAdminBearerToken(idToken: string): Promise<boolean> {
@@ -152,22 +195,27 @@ async function authorizeIcalSyncRequest(
   const bearerToken = extractBearerToken(req);
   if (bearerToken) {
     if (await isAdminBearerToken(bearerToken)) {
+      res.locals.icalSyncAuthMode = "admin_token" as ICalSyncAuthMode;
       return next();
     }
 
     if (await isSchedulerOidcBearerToken(bearerToken)) {
+      res.locals.icalSyncAuthMode = "scheduler_oidc" as ICalSyncAuthMode;
       return next();
     }
 
+    console.warn("[iCal sync] Authorization denied for bearer token", getIcalSyncRequestContext(req));
     return res.status(403).json({
       error: "No autorizado para sincronizar iCal. Use un token de administrador o el OIDC de Cloud Scheduler configurado.",
     });
   }
 
   if (isLoopbackRequest(req)) {
+    res.locals.icalSyncAuthMode = "loopback" as ICalSyncAuthMode;
     return next();
   }
 
+  console.warn("[iCal sync] Authorization denied without bearer token", getIcalSyncRequestContext(req));
   return res.status(401).json({
     error: "La sincronización iCal requiere autenticación de administrador o Scheduler.",
   });
@@ -422,98 +470,214 @@ app.post("/api/rooms/:roomId/rebuild-availability", async (req, res) => {
 // 2. ENDPOINT: Sync External iCal URLs into Firestore (The scheduled cron)
 // -------------------------------------------------------------------------
 app.post("/api/sync-ical", authorizeIcalSyncRequest, async (req, res) => {
+  const syncRunId = buildIcalSyncRunId();
+  const syncStartedAt = Date.now();
+  const authMode = res.locals.icalSyncAuthMode as ICalSyncAuthMode | undefined;
+  const requestContext = getIcalSyncRequestContext(req, authMode);
+
   try {
-    console.log("iCal sync triggered manually or by cron...");
+    console.log("[iCal sync] Run started", {
+      syncRunId,
+      startedAt: new Date(syncStartedAt).toISOString(),
+      ...requestContext,
+    });
+
     const roomsSnap = await db.collection("rooms").get();
-    const results: any[] = [];
+    console.log("[iCal sync] Rooms loaded", {
+      syncRunId,
+      roomCount: roomsSnap.size,
+    });
+
+    const results: Array<{
+      roomId: string;
+      roomName: string;
+      status: "synced" | "skipped";
+      blockedDatesCount: number;
+      externalBlockedDatesCount: number;
+      hasAirbnbIcal: boolean;
+      hasBookingIcal: boolean;
+      errors: string[];
+      warnings: string[];
+      sourceDiagnostics: ICalSourceDiagnostic[];
+      summary: ICalSyncSummary;
+    }> = [];
 
     for (const roomDoc of roomsSnap.docs) {
       const room = roomDoc.data();
       const roomId = roomDoc.id;
-      const integration = await loadRoomIntegration(roomId, room);
+      const roomName = room.name || roomId;
+      const roomStartedAt = Date.now();
 
-      // We parse actual local app bookings to make sure they remain blocked
-      const bookingsSnap = await db
-        .collection("bookings")
-        .where("roomId", "==", roomId)
-        .where("status", "==", "confirmed")
-        .get();
+      try {
+        const existingBlockedDates = Array.isArray(room.blockedDates)
+          ? room.blockedDates.filter((date: unknown): date is string => typeof date === "string")
+          : [];
+        const manualBlockedDates = Array.isArray(room.manualBlockedDates)
+          ? room.manualBlockedDates.filter((date: unknown): date is string => typeof date === "string")
+          : existingBlockedDates;
+        const existingExternalBlockedDates = Array.isArray(room.externalBlockedDates)
+          ? room.externalBlockedDates.filter((date: unknown): date is string => typeof date === "string")
+          : [];
 
-      const existingBlockedDates = Array.isArray(room.blockedDates)
-        ? room.blockedDates.filter((date: unknown): date is string => typeof date === "string")
-        : [];
-      const manualBlockedDates = Array.isArray(room.manualBlockedDates)
-        ? room.manualBlockedDates.filter((date: unknown): date is string => typeof date === "string")
-        : existingBlockedDates;
-      const existingExternalBlockedDates = Array.isArray(room.externalBlockedDates)
-        ? room.externalBlockedDates.filter((date: unknown): date is string => typeof date === "string")
-        : [];
+        console.log("[iCal sync] Room started", {
+          syncRunId,
+          roomId,
+          roomName,
+          currentBlockedDatesCount: existingBlockedDates.length,
+          currentManualBlockedDatesCount: manualBlockedDates.length,
+          currentExternalBlockedDatesCount: existingExternalBlockedDates.length,
+        });
 
-      const syncResult = await syncRoomAvailability({
-        roomId,
-        roomName: room.name || roomId,
-        existingBlockedDates,
-        manualBlockedDates,
-        existingExternalBlockedDates,
-        confirmedBookings: bookingsSnap.docs.map((bookingDoc) => {
-          const booking = bookingDoc.data();
-          return {
-            checkIn: booking.checkIn,
-            checkOut: booking.checkOut,
-          };
-        }),
-        airbnbIcalUrl: integration.airbnbIcalUrl,
-        bookingIcalUrl: integration.bookingIcalUrl,
-      });
+        const integration = await loadRoomIntegration(roomId, room);
 
-      if (!syncResult.shouldUpdate) {
-        console.error(`iCal sync skipped for ${room.name || roomId}:`, syncResult.errors);
+        // We parse actual local app bookings to make sure they remain blocked
+        const bookingsSnap = await db
+          .collection("bookings")
+          .where("roomId", "==", roomId)
+          .where("status", "==", "confirmed")
+          .get();
+
+        console.log("[iCal sync] Room inputs resolved", {
+          syncRunId,
+          roomId,
+          roomName,
+          confirmedBookingsCount: bookingsSnap.size,
+          hasAirbnbIcal: Boolean(integration.airbnbIcalUrl),
+          hasBookingIcal: Boolean(integration.bookingIcalUrl),
+        });
+
+        const syncResult = await syncRoomAvailability({
+          roomId,
+          roomName,
+          existingBlockedDates,
+          manualBlockedDates,
+          existingExternalBlockedDates,
+          confirmedBookings: bookingsSnap.docs.map((bookingDoc) => {
+            const booking = bookingDoc.data();
+            return {
+              checkIn: booking.checkIn,
+              checkOut: booking.checkOut,
+            };
+          }),
+          airbnbIcalUrl: integration.airbnbIcalUrl,
+          bookingIcalUrl: integration.bookingIcalUrl,
+        });
+
+        if (!syncResult.shouldUpdate) {
+          console.error("[iCal sync] Room skipped", {
+            syncRunId,
+            roomId,
+            roomName,
+            durationMs: Date.now() - roomStartedAt,
+            errors: syncResult.errors,
+            warnings: syncResult.warnings,
+            sourceDiagnostics: syncResult.sourceDiagnostics,
+            summary: syncResult.summary,
+          });
+          results.push({
+            roomId,
+            roomName,
+            status: syncResult.status,
+            blockedDatesCount: syncResult.blockedDates.length,
+            externalBlockedDatesCount: syncResult.externalBlockedDates.length,
+            hasAirbnbIcal: syncResult.hasAirbnbIcal,
+            hasBookingIcal: syncResult.hasBookingIcal,
+            errors: syncResult.errors,
+            warnings: syncResult.warnings,
+            sourceDiagnostics: syncResult.sourceDiagnostics,
+            summary: syncResult.summary,
+          });
+          continue;
+        }
+
+        // Update only after every configured external source succeeded.
+        await db.collection("rooms").doc(roomId).update({
+          blockedDates: syncResult.blockedDates,
+          manualBlockedDates: normalizeDateList(manualBlockedDates),
+          externalBlockedDates: syncResult.externalBlockedDates,
+        });
+
+        console.log("[iCal sync] Room updated", {
+          syncRunId,
+          roomId,
+          roomName,
+          durationMs: Date.now() - roomStartedAt,
+          warnings: syncResult.warnings,
+          sourceDiagnostics: syncResult.sourceDiagnostics,
+          summary: syncResult.summary,
+        });
+
         results.push({
           roomId,
-          roomName: room.name || roomId,
+          roomName,
           status: syncResult.status,
           blockedDatesCount: syncResult.blockedDates.length,
           externalBlockedDatesCount: syncResult.externalBlockedDates.length,
           hasAirbnbIcal: syncResult.hasAirbnbIcal,
           hasBookingIcal: syncResult.hasBookingIcal,
-          errors: syncResult.errors,
+          errors: [],
+          warnings: syncResult.warnings,
+          sourceDiagnostics: syncResult.sourceDiagnostics,
+          summary: syncResult.summary,
         });
-        continue;
+      } catch (error) {
+        console.error("[iCal sync] Room crashed", {
+          syncRunId,
+          roomId,
+          roomName,
+          durationMs: Date.now() - roomStartedAt,
+          error: serializeErrorForLog(error),
+        });
+        throw error;
       }
-
-      // Update only after every configured external source succeeded.
-      await db.collection("rooms").doc(roomId).update({
-        blockedDates: syncResult.blockedDates,
-        manualBlockedDates: normalizeDateList(manualBlockedDates),
-        externalBlockedDates: syncResult.externalBlockedDates,
-      });
-
-      results.push({
-        roomId,
-        roomName: room.name || roomId,
-        status: syncResult.status,
-        blockedDatesCount: syncResult.blockedDates.length,
-        externalBlockedDatesCount: syncResult.externalBlockedDates.length,
-        hasAirbnbIcal: syncResult.hasAirbnbIcal,
-        hasBookingIcal: syncResult.hasBookingIcal,
-        errors: [],
-      });
     }
 
+    const finishedAt = new Date().toISOString();
     const failedRooms = results.filter((result) => result.status === "skipped");
+    const syncedRooms = results.filter((result) => result.status === "synced");
+    const runSummary = {
+      syncRunId,
+      startedAt: new Date(syncStartedAt).toISOString(),
+      finishedAt,
+      durationMs: Date.now() - syncStartedAt,
+      roomCount: roomsSnap.size,
+      syncedRoomsCount: syncedRooms.length,
+      failedRoomsCount: failedRooms.length,
+    };
+
     if (failedRooms.length > 0) {
+      console.error("[iCal sync] Run completed with room failures", {
+        ...runSummary,
+        failedRooms: failedRooms.map((roomResult) => ({
+          roomId: roomResult.roomId,
+          roomName: roomResult.roomName,
+          errors: roomResult.errors,
+          warnings: roomResult.warnings,
+        })),
+      });
       return res.status(502).json({
         status: "partial",
+        syncRunId,
+        summary: runSummary,
         error: "Algunos apartamentos conservaron su última disponibilidad válida porque un feed iCal falló.",
-        synced_rooms: results.filter((result) => result.status === "synced"),
+        synced_rooms: syncedRooms,
         failed_rooms: failedRooms,
       });
     }
 
-    return res.json({ status: "success", synced_rooms: results });
+    console.log("[iCal sync] Run completed successfully", {
+      ...runSummary,
+      syncedRoomIds: syncedRooms.map((roomResult) => roomResult.roomId),
+    });
+    return res.json({ status: "success", syncRunId, summary: runSummary, synced_rooms: results });
   } catch (error: any) {
-    console.error("Error during iCal sync execution:", error);
-    return res.status(500).json({ error: error.message });
+    console.error("[iCal sync] Run failed", {
+      syncRunId,
+      durationMs: Date.now() - syncStartedAt,
+      ...requestContext,
+      error: serializeErrorForLog(error),
+    });
+    return res.status(500).json({ error: error.message, syncRunId });
   }
 });
 

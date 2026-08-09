@@ -24,18 +24,87 @@ export interface ICalSyncResult {
   hasAirbnbIcal: boolean;
   hasBookingIcal: boolean;
   errors: string[];
+  warnings: string[];
+  sourceDiagnostics: ICalSourceDiagnostic[];
+  summary: ICalSyncSummary;
 }
 
 export interface ICalFetchResponse {
   ok: boolean;
   status: number;
+  headers?: {
+    get(name: string): string | null;
+  };
   text(): Promise<string>;
 }
 
 export type ICalFetcher = (url: string) => Promise<ICalFetchResponse>;
 
+export interface ICalSourceDiagnostic {
+  sourceName: string;
+  configured: boolean;
+  urlSummary: string | null;
+  status: "not_configured" | "fetched" | "failed";
+  durationMs: number;
+  httpStatus: number | null;
+  responseBytes: number | null;
+  contentType: string | null;
+  rawLineCount: number;
+  eventCount: number;
+  completeEventCount: number;
+  incompleteEventCount: number;
+  blockedDatesCount: number;
+  firstBlockedDate: string | null;
+  lastBlockedDate: string | null;
+  warnings: string[];
+  error: string | null;
+}
+
+export interface ICalSyncSummary {
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  configuredSourcesCount: number;
+  successfulSourcesCount: number;
+  failedSourcesCount: number;
+  confirmedBookingsCount: number;
+  confirmedBookingDatesCount: number;
+  manualBlockedDatesCount: number;
+  previousBlockedDatesCount: number;
+  previousExternalBlockedDatesCount: number;
+  nextBlockedDatesCount: number;
+  nextExternalBlockedDatesCount: number;
+  blockedDatesChanged: boolean;
+  externalBlockedDatesChanged: boolean;
+  changedBlockedDatesCount: number;
+  changedExternalBlockedDatesCount: number;
+}
+
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 const I_CAL_DATE_PATTERN = /^(\d{4})(\d{2})(\d{2})/;
+
+interface ParsedICalDetails {
+  blockedDates: string[];
+  eventCount: number;
+  completeEventCount: number;
+  incompleteEventCount: number;
+  rawLineCount: number;
+}
+
+interface ICalSourceFetchResult {
+  dates: string[];
+  diagnostic: ICalSourceDiagnostic;
+}
+
+class ICalSourceSyncError extends Error {
+  diagnostic: ICalSourceDiagnostic;
+
+  constructor(message: string, diagnostic: ICalSourceDiagnostic) {
+    super(message);
+    this.name = "ICalSourceSyncError";
+    this.diagnostic = diagnostic;
+  }
+}
 
 function isValidDateString(value: string): boolean {
   const match = DATE_PATTERN.exec(value);
@@ -104,22 +173,142 @@ function isValidICalDocument(icalText: string): boolean {
     && /(?:^|\r?\n)END:VCALENDAR\s*(?:\r?\n|$)/.test(icalText);
 }
 
+function summarizeSourceUrl(url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+    const pathSegments = parsedUrl.pathname.split("/").filter(Boolean);
+    return `${parsedUrl.protocol}//${parsedUrl.host} (segments:${pathSegments.length}, lastSegmentLength:${pathSegments.at(-1)?.length || 0}, query:${parsedUrl.search ? "yes" : "no"})`;
+  } catch {
+    return `invalid-url-format(length:${url.length})`;
+  }
+}
+
+function getDateRangePreview(dates: string[]): { firstBlockedDate: string | null; lastBlockedDate: string | null } {
+  const normalizedDates = normalizeDateList(dates);
+  return {
+    firstBlockedDate: normalizedDates[0] || null,
+    lastBlockedDate: normalizedDates[normalizedDates.length - 1] || null,
+  };
+}
+
+function areDateListsEqual(previousDates: string[], nextDates: string[]): boolean {
+  const previous = normalizeDateList(previousDates);
+  const next = normalizeDateList(nextDates);
+  if (previous.length !== next.length) return false;
+
+  return previous.every((date, index) => date === next[index]);
+}
+
+function countDateListChanges(previousDates: string[], nextDates: string[]): number {
+  const previous = new Set(normalizeDateList(previousDates));
+  const next = new Set(normalizeDateList(nextDates));
+  let changes = 0;
+
+  for (const date of previous) {
+    if (!next.has(date)) {
+      changes += 1;
+    }
+  }
+
+  for (const date of next) {
+    if (!previous.has(date)) {
+      changes += 1;
+    }
+  }
+
+  return changes;
+}
+
+function buildSyncSummary(params: {
+  startedAt: Date;
+  configuredSourcesCount: number;
+  successfulSourcesCount: number;
+  failedSourcesCount: number;
+  confirmedBookingsCount: number;
+  confirmedBookingDatesCount: number;
+  manualBlockedDatesCount: number;
+  previousBlockedDatesCount: number;
+  previousExternalBlockedDatesCount: number;
+  nextBlockedDates: string[];
+  nextExternalBlockedDates: string[];
+  comparisonBlockedDates: string[];
+  comparisonExternalBlockedDates: string[];
+}): ICalSyncSummary {
+  const finishedAt = new Date();
+  return {
+    startedAt: params.startedAt.toISOString(),
+    finishedAt: finishedAt.toISOString(),
+    durationMs: finishedAt.getTime() - params.startedAt.getTime(),
+    configuredSourcesCount: params.configuredSourcesCount,
+    successfulSourcesCount: params.successfulSourcesCount,
+    failedSourcesCount: params.failedSourcesCount,
+    confirmedBookingsCount: params.confirmedBookingsCount,
+    confirmedBookingDatesCount: params.confirmedBookingDatesCount,
+    manualBlockedDatesCount: params.manualBlockedDatesCount,
+    previousBlockedDatesCount: params.previousBlockedDatesCount,
+    previousExternalBlockedDatesCount: params.previousExternalBlockedDatesCount,
+    nextBlockedDatesCount: params.nextBlockedDates.length,
+    nextExternalBlockedDatesCount: params.nextExternalBlockedDates.length,
+    blockedDatesChanged: !areDateListsEqual(params.comparisonBlockedDates, params.nextBlockedDates),
+    externalBlockedDatesChanged: !areDateListsEqual(params.comparisonExternalBlockedDates, params.nextExternalBlockedDates),
+    changedBlockedDatesCount: countDateListChanges(params.comparisonBlockedDates, params.nextBlockedDates),
+    changedExternalBlockedDatesCount: countDateListChanges(params.comparisonExternalBlockedDates, params.nextExternalBlockedDates),
+  };
+}
+
+function buildRoomWarnings(params: {
+  configuredSourcesCount: number;
+  successfulSourcesCount: number;
+  nextExternalBlockedDates: string[];
+  nextBlockedDates: string[];
+  comparisonBlockedDates: string[];
+  sourceDiagnostics: ICalSourceDiagnostic[];
+}): string[] {
+  const warnings: string[] = [];
+  if (params.configuredSourcesCount === 0) {
+    warnings.push("No hay feeds iCal externos configurados para este apartamento.");
+  }
+
+  if (params.configuredSourcesCount > 0 && params.successfulSourcesCount > 0 && params.nextExternalBlockedDates.length === 0) {
+    warnings.push("Los feeds iCal configurados respondieron, pero no aportaron fechas bloqueadas externas.");
+  }
+
+  if (areDateListsEqual(params.comparisonBlockedDates, params.nextBlockedDates)) {
+    warnings.push("La sincronización terminó sin cambios en blockedDates.");
+  }
+
+  if (params.sourceDiagnostics.some((diagnostic) => diagnostic.warnings.length > 0)) {
+    warnings.push("Uno o más feeds devolvieron advertencias; revisa sourceDiagnostics.");
+  }
+
+  return warnings;
+}
+
 /**
  * Extract blocked nights from VEVENT ranges. DTSTART is inclusive and DTEND
  * is exclusive, matching the reservation semantics used by the app.
  */
 export function parseICalContent(icalText: string): string[] {
+  return parseICalDocumentDetails(icalText).blockedDates;
+}
+
+function parseICalDocumentDetails(icalText: string): ParsedICalDetails {
   if (!isValidICalDocument(icalText)) {
     throw new Error("La respuesta no contiene un documento iCal válido.");
   }
 
+  const unfoldedLines = unfoldICalLines(icalText);
   const blockedDates: string[] = [];
   let currentEvent: { start?: string; end?: string } | null = null;
+  let eventCount = 0;
+  let completeEventCount = 0;
+  let incompleteEventCount = 0;
 
-  for (const rawLine of unfoldICalLines(icalText)) {
+  for (const rawLine of unfoldedLines) {
     const line = rawLine.trim();
 
     if (line === "BEGIN:VEVENT") {
+      eventCount += 1;
       currentEvent = {};
       continue;
     }
@@ -127,6 +316,9 @@ export function parseICalContent(icalText: string): string[] {
     if (line === "END:VEVENT") {
       if (currentEvent?.start && currentEvent.end) {
         blockedDates.push(...datesForRange(currentEvent.start, currentEvent.end));
+        completeEventCount += 1;
+      } else if (currentEvent) {
+        incompleteEventCount += 1;
       }
       currentEvent = null;
       continue;
@@ -141,7 +333,13 @@ export function parseICalContent(icalText: string): string[] {
     }
   }
 
-  return [...new Set(blockedDates)].sort();
+  return {
+    blockedDates: [...new Set(blockedDates)].sort(),
+    eventCount,
+    completeEventCount,
+    incompleteEventCount,
+    rawLineCount: unfoldedLines.length,
+  };
 }
 
 export function normalizeDateList(dates: string[]): string[] {
@@ -212,13 +410,115 @@ async function fetchSourceDates(
   sourceName: string,
   url: string,
   fetcher: ICalFetcher,
-): Promise<string[]> {
-  const response = await fetcher(url);
-  if (!response.ok) {
-    throw new Error(`${sourceName} respondió HTTP ${response.status}.`);
-  }
+): Promise<ICalSourceFetchResult> {
+  const startedAt = Date.now();
+  const urlSummary = summarizeSourceUrl(url);
+  try {
+    const response = await fetcher(url);
+    const contentType = response.headers?.get("content-type") || null;
+    if (!response.ok) {
+      throw new ICalSourceSyncError(`${sourceName} respondió HTTP ${response.status}.`, {
+        sourceName,
+        configured: true,
+        urlSummary,
+        status: "failed",
+        durationMs: Date.now() - startedAt,
+        httpStatus: response.status,
+        responseBytes: null,
+        contentType,
+        rawLineCount: 0,
+        eventCount: 0,
+        completeEventCount: 0,
+        incompleteEventCount: 0,
+        blockedDatesCount: 0,
+        firstBlockedDate: null,
+        lastBlockedDate: null,
+        warnings: [],
+        error: `${sourceName} respondió HTTP ${response.status}.`,
+      });
+    }
 
-  return parseICalContent(await response.text());
+    const rawText = await response.text();
+
+    try {
+      const parsed = parseICalDocumentDetails(rawText);
+      const warnings: string[] = [];
+      if (parsed.eventCount === 0) {
+        warnings.push("Documento iCal válido, pero sin eventos VEVENT.");
+      }
+      if (parsed.incompleteEventCount > 0) {
+        warnings.push(`Se ignoraron ${parsed.incompleteEventCount} eventos incompletos sin DTSTART/DTEND.`);
+      }
+
+      return {
+        dates: parsed.blockedDates,
+        diagnostic: {
+          sourceName,
+          configured: true,
+          urlSummary,
+          status: "fetched",
+          durationMs: Date.now() - startedAt,
+          httpStatus: response.status,
+          responseBytes: rawText.length,
+          contentType,
+          rawLineCount: parsed.rawLineCount,
+          eventCount: parsed.eventCount,
+          completeEventCount: parsed.completeEventCount,
+          incompleteEventCount: parsed.incompleteEventCount,
+          blockedDatesCount: parsed.blockedDates.length,
+          ...getDateRangePreview(parsed.blockedDates),
+          warnings,
+          error: null,
+        },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${sourceName} devolvió una respuesta no interpretable.`;
+      throw new ICalSourceSyncError(message, {
+        sourceName,
+        configured: true,
+        urlSummary,
+        status: "failed",
+        durationMs: Date.now() - startedAt,
+        httpStatus: response.status,
+        responseBytes: rawText.length,
+        contentType,
+        rawLineCount: rawText.replace(/^\uFEFF/, "").split(/\r?\n/).length,
+        eventCount: 0,
+        completeEventCount: 0,
+        incompleteEventCount: 0,
+        blockedDatesCount: 0,
+        firstBlockedDate: null,
+        lastBlockedDate: null,
+        warnings: [],
+        error: message,
+      });
+    }
+  } catch (error) {
+    if (error instanceof ICalSourceSyncError) {
+      throw error;
+    }
+
+    const message = error instanceof Error ? error.message : `${sourceName} no pudo sincronizarse.`;
+    throw new ICalSourceSyncError(message, {
+      sourceName,
+      configured: true,
+      urlSummary,
+      status: "failed",
+      durationMs: Date.now() - startedAt,
+      httpStatus: null,
+      responseBytes: null,
+      contentType: null,
+      rawLineCount: 0,
+      eventCount: 0,
+      completeEventCount: 0,
+      incompleteEventCount: 0,
+      blockedDatesCount: 0,
+      firstBlockedDate: null,
+      lastBlockedDate: null,
+      warnings: [],
+      error: message,
+    });
+  }
 }
 
 /**
@@ -230,6 +530,7 @@ export async function syncRoomAvailability(
   input: ICalSyncInput,
   fetcher: ICalFetcher = (url) => fetch(url),
 ): Promise<ICalSyncResult> {
+  const startedAt = new Date();
   const externalSources = [
     { name: "Airbnb", url: input.airbnbIcalUrl?.trim() || "" },
     { name: "Booking.com", url: input.bookingIcalUrl?.trim() || "" },
@@ -238,48 +539,155 @@ export async function syncRoomAvailability(
   const nextBlockedDates: string[] = [];
   const manualBlockedDates = normalizeDateList(input.manualBlockedDates || []);
   const nextExternalBlockedDates: string[] = [];
+  const sourceDiagnostics: ICalSourceDiagnostic[] = [];
+  const confirmedBookingDates = input.confirmedBookings.flatMap((booking) => datesForRange(booking.checkIn, booking.checkOut));
+  const previousBlockedDates = normalizeDateList(input.existingBlockedDates);
+  const previousExternalBlockedDates = normalizeDateList(input.existingExternalBlockedDates || []);
 
-  for (const booking of input.confirmedBookings) {
-    nextBlockedDates.push(...datesForRange(booking.checkIn, booking.checkOut));
-  }
+  nextBlockedDates.push(...confirmedBookingDates);
 
   for (const source of externalSources) {
-    if (!source.url) continue;
+    if (!source.url) {
+      sourceDiagnostics.push({
+        sourceName: source.name,
+        configured: false,
+        urlSummary: null,
+        status: "not_configured",
+        durationMs: 0,
+        httpStatus: null,
+        responseBytes: null,
+        contentType: null,
+        rawLineCount: 0,
+        eventCount: 0,
+        completeEventCount: 0,
+        incompleteEventCount: 0,
+        blockedDatesCount: 0,
+        firstBlockedDate: null,
+        lastBlockedDate: null,
+        warnings: ["No hay URL configurada para esta fuente."],
+        error: null,
+      });
+      continue;
+    }
 
+    const sourceStartedAt = Date.now();
     try {
-      const sourceDates = await fetchSourceDates(source.name, source.url, fetcher);
-      nextExternalBlockedDates.push(...sourceDates);
-      nextBlockedDates.push(...sourceDates);
+      const sourceResult = await fetchSourceDates(source.name, source.url, fetcher);
+      nextExternalBlockedDates.push(...sourceResult.dates);
+      nextBlockedDates.push(...sourceResult.dates);
+      sourceDiagnostics.push(sourceResult.diagnostic);
     } catch (error) {
-      errors.push(error instanceof Error ? error.message : `${source.name} no pudo sincronizarse.`);
+      const message = error instanceof Error ? error.message : `${source.name} no pudo sincronizarse.`;
+      errors.push(message);
+      const sourceDiagnostic = error instanceof ICalSourceSyncError
+        ? error.diagnostic
+        : {
+            sourceName: source.name,
+            configured: true,
+            urlSummary: summarizeSourceUrl(source.url),
+            status: "failed" as const,
+            durationMs: Date.now() - sourceStartedAt,
+            httpStatus: null,
+            responseBytes: null,
+            contentType: null,
+            rawLineCount: 0,
+            eventCount: 0,
+            completeEventCount: 0,
+            incompleteEventCount: 0,
+            blockedDatesCount: 0,
+            firstBlockedDate: null,
+            lastBlockedDate: null,
+            warnings: [],
+            error: message,
+          };
+      sourceDiagnostics.push({
+        ...sourceDiagnostic,
+        error: message,
+      });
     }
   }
 
+  const configuredSourcesCount = sourceDiagnostics.filter((diagnostic) => diagnostic.configured).length;
+  const successfulSourcesCount = sourceDiagnostics.filter((diagnostic) => diagnostic.status === "fetched").length;
+  const failedSourcesCount = sourceDiagnostics.filter((diagnostic) => diagnostic.status === "failed").length;
+
   if (errors.length > 0) {
+    const summary = buildSyncSummary({
+      startedAt,
+      configuredSourcesCount,
+      successfulSourcesCount,
+      failedSourcesCount,
+      confirmedBookingsCount: input.confirmedBookings.length,
+      confirmedBookingDatesCount: confirmedBookingDates.length,
+      manualBlockedDatesCount: manualBlockedDates.length,
+      previousBlockedDatesCount: previousBlockedDates.length,
+      previousExternalBlockedDatesCount: previousExternalBlockedDates.length,
+      nextBlockedDates: previousBlockedDates,
+      nextExternalBlockedDates: previousExternalBlockedDates,
+      comparisonBlockedDates: previousBlockedDates,
+      comparisonExternalBlockedDates: previousExternalBlockedDates,
+    });
     return {
       roomId: input.roomId,
       roomName: input.roomName,
       shouldUpdate: false,
       status: "skipped",
-      blockedDates: normalizeDateList(input.existingBlockedDates),
-      externalBlockedDates: normalizeDateList(input.existingExternalBlockedDates || []),
+      blockedDates: previousBlockedDates,
+      externalBlockedDates: previousExternalBlockedDates,
       hasAirbnbIcal: Boolean(externalSources[0].url),
       hasBookingIcal: Boolean(externalSources[1].url),
       errors,
+      warnings: buildRoomWarnings({
+        configuredSourcesCount,
+        successfulSourcesCount,
+        nextExternalBlockedDates: previousExternalBlockedDates,
+        nextBlockedDates: previousBlockedDates,
+        comparisonBlockedDates: previousBlockedDates,
+        sourceDiagnostics,
+      }),
+      sourceDiagnostics,
+      summary,
     };
   }
 
   nextBlockedDates.push(...manualBlockedDates);
+  const normalizedBlockedDates = normalizeDateList(nextBlockedDates);
+  const normalizedExternalBlockedDates = normalizeDateList(nextExternalBlockedDates);
+  const summary = buildSyncSummary({
+    startedAt,
+    configuredSourcesCount,
+    successfulSourcesCount,
+    failedSourcesCount,
+    confirmedBookingsCount: input.confirmedBookings.length,
+    confirmedBookingDatesCount: confirmedBookingDates.length,
+    manualBlockedDatesCount: manualBlockedDates.length,
+    previousBlockedDatesCount: previousBlockedDates.length,
+    previousExternalBlockedDatesCount: previousExternalBlockedDates.length,
+    nextBlockedDates: normalizedBlockedDates,
+    nextExternalBlockedDates: normalizedExternalBlockedDates,
+    comparisonBlockedDates: previousBlockedDates,
+    comparisonExternalBlockedDates: previousExternalBlockedDates,
+  });
 
   return {
     roomId: input.roomId,
     roomName: input.roomName,
     shouldUpdate: true,
     status: "synced",
-    blockedDates: normalizeDateList(nextBlockedDates),
-    externalBlockedDates: normalizeDateList(nextExternalBlockedDates),
+    blockedDates: normalizedBlockedDates,
+    externalBlockedDates: normalizedExternalBlockedDates,
     hasAirbnbIcal: Boolean(externalSources[0].url),
     hasBookingIcal: Boolean(externalSources[1].url),
     errors: [],
+    warnings: buildRoomWarnings({
+      configuredSourcesCount,
+      successfulSourcesCount,
+      nextExternalBlockedDates: normalizedExternalBlockedDates,
+      nextBlockedDates: normalizedBlockedDates,
+      comparisonBlockedDates: previousBlockedDates,
+      sourceDiagnostics,
+    }),
+    sourceDiagnostics,
+    summary,
   };
 }
