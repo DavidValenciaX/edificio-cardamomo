@@ -63,7 +63,7 @@ export default function GuestDashboard({
   // Booking details
   const [checkIn, setCheckIn] = useState<string | null>(null); // YYYY-MM-DD
   const [checkOut, setCheckOut] = useState<string | null>(null); // YYYY-MM-DD
-  const [guestCount, setGuestCount] = useState(1);
+  const [guestCount, setGuestCount] = useState(() => activeRoom?.capacity ?? 1);
   const [bookingError, setBookingError] = useState("");
   const [bookingLoading, setBookingLoading] = useState(false);
   const [successBooking, setSuccessBooking] = useState<Booking | null>(null);
@@ -82,10 +82,10 @@ export default function GuestDashboard({
       // If room changes, adjust selected dates if they are no longer suitable
       setCheckIn(null);
       setCheckOut(null);
-      setGuestCount(Math.min(Math.max(activeRoom.pricing.baseOccupancy, 1), activeRoom.capacity));
+      setGuestCount(activeRoom.capacity);
       setBookingError("");
     }
-  }, [activeRoom?.id, activeRoom?.capacity, activeRoom?.pricing.baseOccupancy]);
+  }, [activeRoom?.id, activeRoom?.capacity]);
 
   useEffect(() => {
     if (!userProfile) return;
