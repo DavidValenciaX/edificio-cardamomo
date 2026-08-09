@@ -12,6 +12,7 @@ import { deleteObject, getDownloadURL, ref, uploadBytes } from "firebase/storage
 import { auth, db, handleFirestoreError, OperationType, storage } from "../lib/firebase";
 import { getApiUrl, getPublicApiOrigin } from "../lib/api";
 import { buildDefaultRoomFeatures, DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEHOLDER, DEFAULT_ROOM_IMAGE_PLACEHOLDER } from "../data";
+import { optimizeRoomImage } from "../lib/imageOptimization";
 import { getOccupancyPriceOptions, getRoomStartingPrice } from "../lib/pricing";
 import { buildAvailabilityDateSets, datesForInclusiveRange, formatAvailabilityDate, getAvailabilityStatus, getBookingsForDate, getCalendarDays, getTodayDateString, isPastAvailabilityDate, selectDateForRange, type AvailabilityStatus } from "../lib/availability";
 import { datesForRange, normalizeDateList } from "../lib/ical";
@@ -225,12 +226,15 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       throw new Error("Cada imagen debe pesar menos de 5 MB.");
     }
 
-    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "-").toLowerCase();
+    const fileToUpload = destinationPath.startsWith("rooms/")
+      ? await optimizeRoomImage(file)
+      : file;
+    const sanitizedName = fileToUpload.name.replace(/[^a-zA-Z0-9.\-_]/g, "-").toLowerCase();
     const storageRef = ref(storage, `${destinationPath}/${Date.now()}-${sanitizedName}`);
 
-    await uploadBytes(storageRef, file, {
-      contentType: file.type,
-      cacheControl: "public,max-age=3600",
+    await uploadBytes(storageRef, fileToUpload, {
+      contentType: fileToUpload.type,
+      cacheControl: "public,max-age=31536000,immutable",
     });
 
     return getDownloadURL(storageRef);
