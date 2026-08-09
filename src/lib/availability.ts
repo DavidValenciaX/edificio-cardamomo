@@ -55,6 +55,31 @@ export interface AvailabilityDateSets {
   blockedDates: Set<string>;
 }
 
+export interface BookingDateReservation {
+  datesToBlock: string[];
+  nextBlockedDates: string[];
+  conflictDate: string | null;
+}
+
+/**
+ * Calculates the blocked-date projection for a booking attempt.
+ * The caller must use the result from a fresh room read (ideally inside a
+ * Firestore transaction) so a stale client projection cannot overwrite a
+ * concurrent reservation.
+ */
+export function prepareBookingDateReservation(
+  existingBlockedDates: string[],
+  checkIn: string,
+  checkOut: string,
+): BookingDateReservation {
+  const datesToBlock = datesForRange(checkIn, checkOut);
+  const existingDates = new Set(existingBlockedDates);
+  const conflictDate = datesToBlock.find((date) => existingDates.has(date)) ?? null;
+  const nextBlockedDates = [...new Set([...existingBlockedDates, ...datesToBlock])].sort();
+
+  return { datesToBlock, nextBlockedDates, conflictDate };
+}
+
 export function getCalendarDays(month: number, year: number): CalendarDay[] {
   const days: CalendarDay[] = [];
   const firstDay = new Date(year, month, 1).getDay();

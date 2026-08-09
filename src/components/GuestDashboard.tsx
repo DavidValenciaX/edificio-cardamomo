@@ -9,11 +9,13 @@ import {
   query,
   where,
   serverTimestamp,
-  Timestamp
+  Timestamp,
+  runTransaction,
 } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { getApiUrl } from "../lib/api";
 import { datesForRange } from "../lib/ical";
+import { prepareBookingDateReservation } from "../lib/availability";
 import { getNightlyPriceForGuests, getOccupancyPriceOptions, getRoomStartingPrice } from "../lib/pricing";
 import { Room, Booking, UserProfile, GuestContact } from "../types";
 import RoomImageGallery from "./RoomImageGallery";
@@ -31,6 +33,13 @@ interface GuestDashboardProps {
 
 function formatDateOnly(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+class BookingConflictError extends Error {
+  constructor() {
+    super("Las fechas seleccionadas ya no están disponibles. Actualiza el calendario e inténtalo de nuevo.");
+    this.name = "BookingConflictError";
+  }
 }
 
 export default function GuestDashboard({
@@ -315,25 +324,44 @@ export default function GuestDashboard({
         createdAt: serverTimestamp() as any
       };
 
-      // 1. Save Reservation Document inside bookings.
-      // serverTimestamp() resolves server-side and matches the Firestore rule
-      // `data.createdAt == request.time`, so the write is accepted.
       const bookingDocRef = doc(db, "bookings", bookingId);
-      await setDoc(bookingDocRef, newBooking);
-
-      // 2. Compute date days array to block inside rooms collection
-      const datesToBlock = datesForRange(checkIn, checkOut);
-
-      // 3. Atomically join blockedDates inside Room doc
       const roomDocRef = doc(db, "rooms", activeRoom.id);
-      
-      // Update local state and backend
-      const updatedBlockedList = [...new Set([...activeRoom.blockedDates, ...datesToBlock])].sort();
-      await updateDoc(roomDocRef, {
-        blockedDates: updatedBlockedList
+
+      // Keep the booking and the room projection in the same transaction. The
+      // room is read again here so two clients cannot reserve the same dates
+      // based on the same stale activeRoom state.
+      await runTransaction(db, async (transaction) => {
+        const roomSnapshot = await transaction.get(roomDocRef);
+        if (!roomSnapshot.exists()) {
+          throw new Error("El apartamento seleccionado ya no está disponible.");
+        }
+
+        const roomData = roomSnapshot.data();
+        const currentCapacity = typeof roomData.capacity === "number"
+          ? roomData.capacity
+          : activeRoom.capacity;
+        if (guestCount > currentCapacity) {
+          throw new Error(`Este apartamento admite máximo ${currentCapacity} huéspedes.`);
+        }
+
+        const currentBlockedDates = Array.isArray(roomData.blockedDates)
+          ? roomData.blockedDates.filter((date): date is string => typeof date === "string")
+          : [];
+        const reservationDates = prepareBookingDateReservation(currentBlockedDates, checkIn, checkOut);
+        if (reservationDates.conflictDate) {
+          throw new BookingConflictError();
+        }
+
+        // serverTimestamp() resolves server-side and matches the Firestore
+        // rule `data.createdAt == request.time`.
+        transaction.set(bookingDocRef, newBooking);
+        transaction.update(roomDocRef, {
+          blockedDates: reservationDates.nextBlockedDates,
+        });
       });
 
-      // 4. Trigger Server Side Notification Dispatch.
+      // Trigger Server Side Notification Dispatch only after both writes have
+      // committed successfully.
       // serverTimestamp() is a sentinel that doesn't serialize to JSON, so send
       // a plain ISO string for the notification body (used only for logging).
       try {
@@ -371,6 +399,11 @@ export default function GuestDashboard({
       setCheckOut(null);
     } catch (error: any) {
       console.error("Booking write failed:", error);
+      if (error instanceof BookingConflictError) {
+        setBookingError(error.message);
+        onRefreshRooms();
+        return;
+      }
       handleFirestoreError(error, OperationType.CREATE, `bookings/${bookingId}`);
     } finally {
       setBookingLoading(false);

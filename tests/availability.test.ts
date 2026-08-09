@@ -9,6 +9,7 @@ import {
   getCalendarDays,
   getTodayDateString,
   isPastAvailabilityDate,
+  prepareBookingDateReservation,
   selectDateForRange,
 } from "../src/lib/availability.ts";
 import { Booking, Room } from "../src/types.ts";
@@ -73,6 +74,36 @@ test("reserved status takes precedence when a booking overlaps a blocked project
   const dateSets = buildAvailabilityDateSets(overlappingRoom, [confirmedBooking]);
 
   assert.equal(getAvailabilityStatus("2026-08-10", dateSets), "reserved");
+});
+
+test("booking date preparation detects conflicts from the fresh room projection", () => {
+  assert.deepEqual(
+    prepareBookingDateReservation(
+      ["2026-08-14"],
+      "2026-08-12",
+      "2026-08-15",
+    ),
+    {
+      datesToBlock: ["2026-08-12", "2026-08-13", "2026-08-14"],
+      nextBlockedDates: ["2026-08-12", "2026-08-13", "2026-08-14"],
+      conflictDate: "2026-08-14",
+    },
+  );
+});
+
+test("booking date preparation preserves existing blocks and excludes checkout", () => {
+  assert.deepEqual(
+    prepareBookingDateReservation(
+      ["2026-08-20"],
+      "2026-08-17",
+      "2026-08-20",
+    ),
+    {
+      datesToBlock: ["2026-08-17", "2026-08-18", "2026-08-19"],
+      nextBlockedDates: ["2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20"],
+      conflictDate: null,
+    },
+  );
 });
 
 test("getBookingsForDate ignores checkout dates and cancelled bookings", () => {
