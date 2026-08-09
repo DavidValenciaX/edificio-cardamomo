@@ -16,7 +16,7 @@ Edificio Cardamomo es una aplicación web de reservas para apartamentos en Neiva
 - Integraciones: Google Auth Library para validar OIDC de Cloud Scheduler; `fetch` y un parser iCal propio para calendarios externos.
 - Datos compartidos del frontend: defaults y normalización defensiva de habitaciones y contenido público en `src/data.ts`.
 - Despliegue: Firebase Hosting para el frontend, Cloud Run para el backend y GitHub Actions para despliegues y reglas.
-- Tests: Node `node:test` ejecutado con `tsx`; la cobertura actual está en `tests/ical.test.ts`.
+- Tests: Node `node:test` ejecutado con `tsx`; las suites actuales están en `tests/ical.test.ts` y `tests/availability.test.ts`.
 
 ## Identidad visual y paleta de marca
 
@@ -54,9 +54,11 @@ Tipografía: `Playfair Display` para titulares con carácter, `DM Sans` para lec
 | `src/lib/firebaseConfig.ts` | Lectura estricta de variables `VITE_FIREBASE_*`. |
 | `src/lib/api.ts` | Construcción de URLs del backend usando `VITE_API_BASE_URL`. |
 | `src/lib/firestoreData.ts` | Utilidades para preparar objetos antes de escribirlos en Firestore, incluyendo la eliminación de valores `undefined`. |
+| `src/lib/availability.ts` | Calendario, selección de rangos y cálculo de estados de disponibilidad de los apartamentos. |
 | `src/lib/ical.ts` | Rangos de fechas, generación/parsing de iCal y combinación de reservas locales con feeds externos. |
 | `src/lib/pricing.ts` | Cálculo centralizado de tarifas por ocupación, precio inicial visible y opciones de precio por cantidad de huéspedes. |
 | `src/types.ts` | Modelos `UserProfile`, `Room`, `RoomFeatures`, `RoomIntegration`, `Booking`, `Settings` y `PublicContent`, además de sus subtipos. |
+| `src/components/RoomImageGallery.tsx` | Galería pública de imágenes de cada apartamento. |
 | `server.ts` | API Express, Firebase Admin, consolidación de usuarios, feeds/sincronización iCal y notificaciones simuladas. |
 | `firestore.rules` | Reglas y validación de documentos de Firestore. Mantiene denegación por defecto. |
 | `storage.rules` | Lectura pública y escritura de administración para `branding/**` y `rooms/**`. |
@@ -67,7 +69,7 @@ Tipografía: `Playfair Display` para titulares con carácter, `DM Sans` para lec
 Las colecciones principales son:
 
 - `users/{uid}`: perfil de Auth, rol (`guest` o `admin`), datos de contacto y si la sesión es temporal.
-- `rooms/{roomId}`: nombre, descripción, capacidad, `pricing`, imágenes y `blockedDates` en formato `YYYY-MM-DD`.
+- `rooms/{roomId}`: nombre, descripción, capacidad, `pricing`, imágenes, `manualBlockedDates`, `externalBlockedDates` y `blockedDates` en formato `YYYY-MM-DD`. `blockedDates` es la proyección pública de bloqueos manuales, feeds externos y reservas confirmadas.
 - `rooms/{roomId}` también contiene `features`: habitaciones, camas y flags de sofá cama, aire acondicionado, wifi, TV, cocina completa, nevera y baño privado.
 - `rooms/{roomId}.pricing`: tarifa base por noche para una ocupación base y recargo por cada huésped adicional. El shape actual es `baseOccupancy`, `basePricePerNight` y `extraGuestPricePerNight`.
 - `roomIntegrations/{roomId}`: URLs iCal privadas para Airbnb y Booking.com. No deben volver a guardarse en `rooms` salvo para compatibilidad/migración legacy.
@@ -83,7 +85,7 @@ Consideraciones que deben conservarse:
 4. La tarifa visible al huésped depende de la cantidad de personas seleccionada. El cálculo actual usa `basePricePerNight` para `baseOccupancy` y suma `extraGuestPricePerNight` por cada huésped adicional hasta `capacity`. Evita duplicar esta lógica fuera de `src/lib/pricing.ts`.
 5. Al reservar, se debe persistir tanto `guestCount` como `nightlyPriceApplied` junto con `totalPrice`, para conservar la tarifa pactada aunque luego cambie la configuración del apartamento.
 6. Al reservar, el frontend escribe la reserva y luego actualiza `rooms.blockedDates` en operaciones separadas. Este flujo no es una transacción; cualquier cambio relacionado con concurrencia o doble reserva debe evaluar primero migrarlo a una transacción o a una operación backend atómica.
-7. Al cancelar, el huésped solo puede cambiar `status` de su propia reserva a `cancelled`; después se liberan las fechas del apartamento.
+7. Al cancelar, el huésped solo puede cambiar `status` de su propia reserva a `cancelled`. Luego el frontend llama a `POST /api/rooms/:roomId/rebuild-availability`; el backend verifica la pertenencia y reconstruye `blockedDates` con bloqueos manuales, fechas externas y reservas confirmadas.
 8. El checkout iCal es exclusivo: el rango bloqueado incluye check-in y excluye check-out. Mantén el formato `YYYY-MM-DD` al tocar cálculos de disponibilidad.
 9. `POST /api/notify-booking` actualmente simula email, WhatsApp y SMS escribiendo logs; no debe describirse ni tratarse como integración real con proveedores externos.
 10. `publicContent/global` se puede leer públicamente, pero solo un administrador puede crearlo, actualizarlo o eliminarlo. El editor guarda por sección y conserva las secciones no editadas mediante una transacción.
@@ -105,10 +107,11 @@ Requisitos prácticos: Node.js 22 (coincide con GitHub Actions), npm y un proyec
 
 - `npm run dev`: ejecuta `server.ts` con `tsx` y Vite en middleware.
 - `npm run lint`: ejecuta `tsc --noEmit`; es la comprobación estática principal.
-- `npm run test`: ejecuta las pruebas de iCal con Node `node:test` y `tsx`.
+- `npm run test`: ejecuta las pruebas de iCal y disponibilidad con Node `node:test` y `tsx`.
 - `npm run build:hosting`: compila solo el frontend Vite en `dist`.
 - `npm run build:backend`: empaqueta `server.ts` en `dist/server.cjs` con esbuild.
 - `npm run build`: ejecuta ambos builds.
+- `npm run gcp-build`: hook de Cloud Build que ejecuta `npm run build:backend`.
 - `npm run start`: ejecuta `dist/server.cjs`; en producción debe tener `NODE_ENV=production`.
 - `npm run clean`: elimina `dist` y `server.js` con `rm -rf`; es un script Unix y puede no funcionar directamente en PowerShell.
 
@@ -124,8 +127,9 @@ El build requiere las variables de Firebase del cliente; no reemplaces valores r
 ## API del backend
 
 - `POST /api/consolidate-temporary-user`: valida tokens Firebase temporal y final, consolida el perfil y migra reservas anónimas.
-- `GET /api/rooms/:roomId/ical`: publica como calendario iCal la proyección completa de `rooms.blockedDates`, que puede incluir reservas directas y fechas importadas desde Airbnb/Booking.
-- `POST /api/sync-ical`: combina reservas locales y calendarios externos, deduplica `blockedDates` y actualiza Firestore. Acepta token Firebase de admin, token OIDC autorizado de Cloud Scheduler o llamada loopback local.
+- `GET /api/rooms/:roomId/ical.ics`: publica como calendario iCal la proyección completa de `rooms.blockedDates`, que puede incluir reservas directas y fechas importadas desde Airbnb/Booking. `/api/rooms/:roomId/ical` se conserva como alias legacy.
+- `POST /api/rooms/:roomId/rebuild-availability`: reconstruye la proyección después de una cancelación autenticada de un huésped sin exponer las reservas de otros usuarios.
+- `POST /api/sync-ical`: combina reservas locales y calendarios externos, deduplica `blockedDates` y actualiza Firestore. Acepta token Firebase de admin, token OIDC autorizado de Cloud Scheduler o llamada loopback local. La respuesta incluye `syncRunId`, resumen por ejecución, resultados por apartamento, advertencias y `sourceDiagnostics`; si falla un feed configurado, conserva la última proyección válida y devuelve estado parcial.
 - `POST /api/notify-booking`: registra notificaciones simuladas según `settings/global`.
 
 El backend aplica CORS solo a rutas `/api/*`. Con `CORS_ALLOWED_ORIGINS` vacío permite `*`; si se configura, usa una lista separada por comas. En Cloud Run se recomienda desactivar `ENABLE_ICAL_SYNC_TIMER` y disparar `/api/sync-ical` con Cloud Scheduler.
@@ -169,5 +173,5 @@ Las variables de despliegue se inyectan como secretos de GitHub. Los nombres y s
 - Error de permisos Firestore: compara la operación con `firestore.rules`, especialmente `createdAt`, `request.auth.uid`, rol admin y la colección `roomIntegrations`.
 - El contenido público no guarda cambios: revisa que la sesión tenga autorización de administrador y que `publicContent/global` cumpla las validaciones de tamaño de `firestore.rules`.
 - El frontend no llega al backend en producción: revisa `VITE_API_BASE_URL`, CORS y `CORS_ALLOWED_ORIGINS`.
-- iCal no se actualiza: comprueba las URLs guardadas en `roomIntegrations`, el token requerido por `/api/sync-ical` y la configuración de Cloud Scheduler.
+- iCal no se actualiza: comprueba las URLs guardadas en `roomIntegrations`, el token requerido por `/api/sync-ical` y la configuración de Cloud Scheduler. Usa `syncRunId`, `summary`, `warnings` y `sourceDiagnostics` de la respuesta y de los logs para localizar el feed o apartamento afectado.
 - Imágenes no suben: valida tipo/tamaño en `AdminPanel`, Firebase Storage y las reglas de `branding/**` o `rooms/**`.
