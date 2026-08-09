@@ -11,8 +11,14 @@ import {
 } from "firebase-admin";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
-import { buildICalContent, datesForRange, normalizeDateList, syncRoomAvailability } from "./src/lib/ical.ts";
-import type { ICalSourceDiagnostic, ICalSyncSummary } from "./src/lib/ical.ts";
+import {
+  buildBlockedDateProjection,
+  buildICalContent,
+  buildSyncSummary,
+  normalizeDateList,
+  syncRoomAvailability,
+} from "./src/lib/ical.ts";
+import type { ICalBookingRange, ICalSourceDiagnostic, ICalSyncSummary } from "./src/lib/ical.ts";
 
 function readRequiredServerEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -265,40 +271,88 @@ async function loadRoomIntegration(roomId: string, roomData: any): Promise<RoomI
   return legacyIntegration;
 }
 
-async function rebuildRoomBlockedDates(roomId: string): Promise<string[]> {
-  const roomRef = db.collection("rooms").doc(roomId);
-  const roomSnap = await roomRef.get();
-  if (!roomSnap.exists) {
-    throw new Error("Apartamento no encontrado.");
-  }
+interface RoomAvailabilityProjectionUpdate {
+  blockedDates: string[];
+  manualBlockedDates: string[];
+  externalBlockedDates: string[];
+  confirmedBookingsCount: number;
+  confirmedBookingDatesCount: number;
+  previousBlockedDates: string[];
+  previousExternalBlockedDates: string[];
+}
 
-  const roomData = roomSnap.data() || {};
-  const existingBlockedDates = Array.isArray(roomData.blockedDates)
-    ? roomData.blockedDates.filter((date: unknown): date is string => typeof date === "string")
+function normalizeStoredDateList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? normalizeDateList(value.filter((date): date is string => typeof date === "string"))
     : [];
-  const manualBlockedDates = Array.isArray(roomData.manualBlockedDates)
-    ? roomData.manualBlockedDates.filter((date: unknown): date is string => typeof date === "string")
-    : existingBlockedDates;
-  const externalBlockedDates = Array.isArray(roomData.externalBlockedDates)
-    ? roomData.externalBlockedDates.filter((date: unknown): date is string => typeof date === "string")
-    : [];
-  const confirmedBookingsSnap = await db
+}
+
+/**
+ * Rebuilds and writes the room projection from a fresh Firestore snapshot.
+ * External feeds are fetched before this function is called, but all local
+ * data is read again inside the transaction so a direct booking or
+ * cancellation cannot be lost by a stale iCal sync.
+ */
+async function updateRoomAvailabilityProjection(
+  roomId: string,
+  externalBlockedDates?: string[],
+): Promise<RoomAvailabilityProjectionUpdate> {
+  const roomRef = db.collection("rooms").doc(roomId);
+  const bookingsQuery = db
     .collection("bookings")
     .where("roomId", "==", roomId)
-    .where("status", "==", "confirmed")
-    .get();
-  const confirmedReservationDates = confirmedBookingsSnap.docs.flatMap((bookingDoc) => {
-    const booking = bookingDoc.data();
-    return datesForRange(booking.checkIn, booking.checkOut);
-  });
-  const nextBlockedDates = normalizeDateList([
-    ...manualBlockedDates,
-    ...externalBlockedDates,
-    ...confirmedReservationDates,
-  ]);
+    .where("status", "==", "confirmed");
 
-  await roomRef.update({ blockedDates: nextBlockedDates });
-  return nextBlockedDates;
+  return db.runTransaction(async (transaction) => {
+    const roomSnap = await transaction.get(roomRef);
+    const confirmedBookingsSnap = await transaction.get(bookingsQuery);
+    if (!roomSnap.exists) {
+      throw new Error("Apartamento no encontrado.");
+    }
+
+    const roomData = roomSnap.data() || {};
+    const previousBlockedDates = normalizeStoredDateList(roomData.blockedDates);
+    const manualBlockedDates = Array.isArray(roomData.manualBlockedDates)
+      ? normalizeStoredDateList(roomData.manualBlockedDates)
+      : previousBlockedDates;
+    const currentExternalBlockedDates = normalizeStoredDateList(roomData.externalBlockedDates);
+    const nextExternalBlockedDates = externalBlockedDates === undefined
+      ? currentExternalBlockedDates
+      : normalizeDateList(externalBlockedDates);
+    const confirmedBookings: ICalBookingRange[] = confirmedBookingsSnap.docs.map((bookingDoc) => {
+      const booking = bookingDoc.data();
+      return {
+        checkIn: typeof booking.checkIn === "string" ? booking.checkIn : "",
+        checkOut: typeof booking.checkOut === "string" ? booking.checkOut : "",
+      };
+    });
+    const projection = buildBlockedDateProjection({
+      manualBlockedDates,
+      externalBlockedDates: nextExternalBlockedDates,
+      confirmedBookings,
+    });
+
+    transaction.update(roomRef, {
+      blockedDates: projection.blockedDates,
+      manualBlockedDates,
+      externalBlockedDates: nextExternalBlockedDates,
+    });
+
+    return {
+      blockedDates: projection.blockedDates,
+      manualBlockedDates,
+      externalBlockedDates: nextExternalBlockedDates,
+      confirmedBookingsCount: confirmedBookings.length,
+      confirmedBookingDatesCount: projection.confirmedBookingDates.length,
+      previousBlockedDates,
+      previousExternalBlockedDates: currentExternalBlockedDates,
+    };
+  });
+}
+
+async function rebuildRoomBlockedDates(roomId: string): Promise<string[]> {
+  const projection = await updateRoomAvailabilityProjection(roomId);
+  return projection.blockedDates;
 }
 
 // -------------------------------------------------------------
@@ -590,35 +644,58 @@ app.post("/api/sync-ical", authorizeIcalSyncRequest, async (req, res) => {
           continue;
         }
 
-        // Update only after every configured external source succeeded.
-        await db.collection("rooms").doc(roomId).update({
-          blockedDates: syncResult.blockedDates,
-          manualBlockedDates: normalizeDateList(manualBlockedDates),
-          externalBlockedDates: syncResult.externalBlockedDates,
+        // Feeds are fetched outside the transaction because network requests
+        // must not be held open inside Firestore. Re-read local state and
+        // commit the final union atomically so a booking created while feeds
+        // were downloading cannot be overwritten by this stale sync.
+        const committedProjection = await updateRoomAvailabilityProjection(
+          roomId,
+          syncResult.externalBlockedDates,
+        );
+        const committedSummary = buildSyncSummary({
+          startedAt: new Date(syncResult.summary.startedAt),
+          configuredSourcesCount: syncResult.summary.configuredSourcesCount,
+          successfulSourcesCount: syncResult.summary.successfulSourcesCount,
+          failedSourcesCount: syncResult.summary.failedSourcesCount,
+          confirmedBookingsCount: committedProjection.confirmedBookingsCount,
+          confirmedBookingDatesCount: committedProjection.confirmedBookingDatesCount,
+          manualBlockedDatesCount: committedProjection.manualBlockedDates.length,
+          previousBlockedDatesCount: committedProjection.previousBlockedDates.length,
+          previousExternalBlockedDatesCount: committedProjection.previousExternalBlockedDates.length,
+          nextBlockedDates: committedProjection.blockedDates,
+          nextExternalBlockedDates: committedProjection.externalBlockedDates,
+          comparisonBlockedDates: committedProjection.previousBlockedDates,
+          comparisonExternalBlockedDates: committedProjection.previousExternalBlockedDates,
         });
+        const committedSyncResult = {
+          ...syncResult,
+          blockedDates: committedProjection.blockedDates,
+          externalBlockedDates: committedProjection.externalBlockedDates,
+          summary: committedSummary,
+        };
 
         console.log("[iCal sync] Room updated", {
           syncRunId,
           roomId,
           roomName,
           durationMs: Date.now() - roomStartedAt,
-          warnings: syncResult.warnings,
-          sourceDiagnostics: syncResult.sourceDiagnostics,
-          summary: syncResult.summary,
+          warnings: committedSyncResult.warnings,
+          sourceDiagnostics: committedSyncResult.sourceDiagnostics,
+          summary: committedSyncResult.summary,
         });
 
         results.push({
           roomId,
           roomName,
-          status: syncResult.status,
-          blockedDatesCount: syncResult.blockedDates.length,
-          externalBlockedDatesCount: syncResult.externalBlockedDates.length,
+          status: committedSyncResult.status,
+          blockedDatesCount: committedSyncResult.blockedDates.length,
+          externalBlockedDatesCount: committedSyncResult.externalBlockedDates.length,
           hasAirbnbIcal: syncResult.hasAirbnbIcal,
           hasBookingIcal: syncResult.hasBookingIcal,
           errors: [],
-          warnings: syncResult.warnings,
-          sourceDiagnostics: syncResult.sourceDiagnostics,
-          summary: syncResult.summary,
+          warnings: committedSyncResult.warnings,
+          sourceDiagnostics: committedSyncResult.sourceDiagnostics,
+          summary: committedSyncResult.summary,
         });
       } catch (error) {
         console.error("[iCal sync] Room crashed", {

@@ -3,6 +3,17 @@ export interface ICalBookingRange {
   checkOut: string;
 }
 
+export interface BlockedDateProjectionInput {
+  manualBlockedDates?: string[];
+  externalBlockedDates?: string[];
+  confirmedBookings: ICalBookingRange[];
+}
+
+export interface BlockedDateProjection {
+  blockedDates: string[];
+  confirmedBookingDates: string[];
+}
+
 export interface ICalSyncInput {
   roomId: string;
   roomName: string;
@@ -145,6 +156,31 @@ export function datesForRange(checkIn: string, checkOut: string): string[] {
   return dates;
 }
 
+/**
+ * Builds the public availability projection from every authoritative source.
+ * Overlapping dates intentionally collapse into one blocked date: iCal does
+ * not provide a safe priority rule between Airbnb, Booking.com, and direct
+ * bookings, so the conservative result is to keep the night unavailable.
+ */
+export function buildBlockedDateProjection(
+  input: BlockedDateProjectionInput,
+): BlockedDateProjection {
+  const confirmedBookingDates = normalizeDateList(
+    input.confirmedBookings.flatMap((booking) => datesForRange(booking.checkIn, booking.checkOut)),
+  );
+  const manualBlockedDates = normalizeDateList(input.manualBlockedDates || []);
+  const externalBlockedDates = normalizeDateList(input.externalBlockedDates || []);
+
+  return {
+    confirmedBookingDates,
+    blockedDates: normalizeDateList([
+      ...manualBlockedDates,
+      ...externalBlockedDates,
+      ...confirmedBookingDates,
+    ]),
+  };
+}
+
 function unfoldICalLines(icalText: string): string[] {
   const unfolded: string[] = [];
 
@@ -219,7 +255,7 @@ function countDateListChanges(previousDates: string[], nextDates: string[]): num
   return changes;
 }
 
-function buildSyncSummary(params: {
+export function buildSyncSummary(params: {
   startedAt: Date;
   configuredSourcesCount: number;
   successfulSourcesCount: number;
@@ -536,15 +572,14 @@ export async function syncRoomAvailability(
     { name: "Booking.com", url: input.bookingIcalUrl?.trim() || "" },
   ];
   const errors: string[] = [];
-  const nextBlockedDates: string[] = [];
   const manualBlockedDates = normalizeDateList(input.manualBlockedDates || []);
   const nextExternalBlockedDates: string[] = [];
   const sourceDiagnostics: ICalSourceDiagnostic[] = [];
-  const confirmedBookingDates = input.confirmedBookings.flatMap((booking) => datesForRange(booking.checkIn, booking.checkOut));
+  const confirmedBookingDates = buildBlockedDateProjection({
+    confirmedBookings: input.confirmedBookings,
+  }).confirmedBookingDates;
   const previousBlockedDates = normalizeDateList(input.existingBlockedDates);
   const previousExternalBlockedDates = normalizeDateList(input.existingExternalBlockedDates || []);
-
-  nextBlockedDates.push(...confirmedBookingDates);
 
   for (const source of externalSources) {
     if (!source.url) {
@@ -574,7 +609,6 @@ export async function syncRoomAvailability(
     try {
       const sourceResult = await fetchSourceDates(source.name, source.url, fetcher);
       nextExternalBlockedDates.push(...sourceResult.dates);
-      nextBlockedDates.push(...sourceResult.dates);
       sourceDiagnostics.push(sourceResult.diagnostic);
     } catch (error) {
       const message = error instanceof Error ? error.message : `${source.name} no pudo sincronizarse.`;
@@ -650,9 +684,12 @@ export async function syncRoomAvailability(
     };
   }
 
-  nextBlockedDates.push(...manualBlockedDates);
-  const normalizedBlockedDates = normalizeDateList(nextBlockedDates);
   const normalizedExternalBlockedDates = normalizeDateList(nextExternalBlockedDates);
+  const normalizedBlockedDates = buildBlockedDateProjection({
+    manualBlockedDates,
+    externalBlockedDates: normalizedExternalBlockedDates,
+    confirmedBookings: input.confirmedBookings,
+  }).blockedDates;
   const summary = buildSyncSummary({
     startedAt,
     configuredSourcesCount,

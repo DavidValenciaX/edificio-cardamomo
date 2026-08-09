@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
 import {
+  buildBlockedDateProjection,
   buildICalContent,
   datesForRange,
   parseICalContent,
@@ -39,6 +40,22 @@ test("datesForRange preserves calendar dates for reservation nights", () => {
     "2026-09-27",
     "2026-09-28",
   ]);
+});
+
+test("buildBlockedDateProjection blocks overlapping sources without choosing a priority", () => {
+  assert.deepEqual(
+    buildBlockedDateProjection({
+      manualBlockedDates: ["2026-08-11"],
+      externalBlockedDates: ["2026-08-10", "2026-08-11"],
+      confirmedBookings: [
+        {checkIn: "2026-08-10", checkOut: "2026-08-12"},
+      ],
+    }),
+    {
+      confirmedBookingDates: ["2026-08-10", "2026-08-11"],
+      blockedDates: ["2026-08-10", "2026-08-11"],
+    },
+  );
 });
 
 test("parseICalContent extracts inclusive start and exclusive end dates", () => {
