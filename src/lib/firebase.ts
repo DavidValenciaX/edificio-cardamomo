@@ -5,6 +5,7 @@ import { getStorage } from 'firebase/storage';
 import { firebaseConfig } from './firebaseConfig';
 
 const app = initializeApp(firebaseConfig);
+const isProjectPaused = ((import.meta as any).env?.VITE_PROJECT_PAUSED as string | undefined)?.trim() === 'true';
 
 // CRITICAL: The app will break without this or setting firestoreDatabaseId if explicitly present
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
@@ -21,7 +22,10 @@ async function testConnection() {
     }
   }
 }
-testConnection();
+
+if (!isProjectPaused) {
+  testConnection();
+}
 
 // Structured Error Handling as mandated by guidelines
 export enum OperationType {

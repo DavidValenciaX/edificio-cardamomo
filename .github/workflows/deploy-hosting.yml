@@ -7,6 +7,7 @@ on:
       - main
     paths:
       - ".github/workflows/deploy-hosting.yml"
+      - "public/**"
       - "src/**"
       - "index.html"
       - "package.json"
@@ -46,6 +47,8 @@ jobs:
           VITE_FIRESTORE_DATABASE_ID: ${{ secrets.VITE_FIRESTORE_DATABASE_ID }}
           VITE_ADMIN_EMAIL: ${{ secrets.VITE_ADMIN_EMAIL }}
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_PROJECT_PAUSED: ${{ secrets.VITE_PROJECT_PAUSED }}
+          VITE_PROJECT_PAUSE_MESSAGE: ${{ secrets.VITE_PROJECT_PAUSE_MESSAGE }}
         run: npm run build:hosting
 
       - name: Authenticate to Google Cloud

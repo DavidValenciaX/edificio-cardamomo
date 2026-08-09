@@ -9,6 +9,7 @@ on:
       - ".github/workflows/deploy-backend-cloud-run.yml"
       - ".gcloudignore"
       - "server.ts"
+      - "src/lib/ical.ts"
       - "package.json"
       - "package-lock.json"
 

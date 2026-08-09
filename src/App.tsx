@@ -13,6 +13,10 @@ import AdminPanel from "./components/AdminPanel";
 import { ShieldCheck, Award } from "lucide-react";
 
 const ADMIN_EMAIL = (import.meta as any).env?.VITE_ADMIN_EMAIL || "edificiocardamomo@gmail.com";
+const PROJECT_PAUSED = ((import.meta as any).env?.VITE_PROJECT_PAUSED as string | undefined)?.trim() === "true";
+const PROJECT_PAUSE_MESSAGE =
+  ((import.meta as any).env?.VITE_PROJECT_PAUSE_MESSAGE as string | undefined)?.trim()
+  || "Proyecto en pausa.";
 
 function buildProfileFromAuthUser(user: User, existingProfile?: Partial<UserProfile>): UserProfile {
   const role: 'guest' | 'admin' = user.email === ADMIN_EMAIL ? 'admin' : (existingProfile?.role || 'guest');
@@ -41,6 +45,42 @@ function buildProfileFromAuthUser(user: User, existingProfile?: Partial<UserProf
   };
 }
 
+function ProjectPausedScreen() {
+  return (
+    <div className="min-h-screen bg-warm-bg px-4 py-10 text-dark antialiased">
+      <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-4xl items-center justify-center">
+        <section className="w-full overflow-hidden rounded-[2rem] border border-warm-border bg-white shadow-sm">
+          <div className="border-b border-warm-border bg-warm-card px-6 py-4">
+            <div className="flex items-center justify-center gap-2 text-secondary">
+              <Award className="h-5 w-5" />
+              <span className="font-mono text-xs font-bold uppercase tracking-[0.3em]">
+                Edificio Cardamomo
+              </span>
+            </div>
+          </div>
+
+          <div className="px-6 py-12 text-center md:px-12 md:py-16">
+            <div className="mx-auto max-w-2xl space-y-5">
+              <span className="inline-flex rounded-full border border-primary/20 bg-primary/10 px-4 py-2 font-mono text-[11px] font-bold uppercase tracking-[0.3em] text-primary">
+                Proyecto en pausa
+              </span>
+              <h1 className="font-display text-4xl font-bold leading-tight text-dark md:text-5xl">
+                El sitio no se encuentra disponible en este momento
+              </h1>
+              <p className="mx-auto max-w-xl text-base leading-7 text-dark-muted md:text-lg">
+                {PROJECT_PAUSE_MESSAGE}
+              </p>
+              <p className="text-sm italic text-dark-muted">
+                La informacion del proyecto se conserva y podra retomarse mas adelante.
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [currentRole, setCurrentRole] = useState<'guest' | 'admin'>('guest');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -59,6 +99,12 @@ export default function App() {
 
   // Authenticated state persistence and listener
   useEffect(() => {
+    if (PROJECT_PAUSED) {
+      setUserProfile(null);
+      setCurrentRole("guest");
+      return () => undefined;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
@@ -148,6 +194,11 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (PROJECT_PAUSED) {
+      setLoadingRooms(false);
+      return;
+    }
+
     fetchRoomsAndSettings();
   }, []);
 
@@ -178,6 +229,10 @@ export default function App() {
     setUserProfile(profile);
     setCurrentRole(profile.role);
   };
+
+  if (PROJECT_PAUSED) {
+    return <ProjectPausedScreen />;
+  }
 
   return (
     <div className="min-h-screen bg-warm-bg flex flex-col antialiased">

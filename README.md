@@ -19,6 +19,15 @@ Requisitos: Node.js 22, npm y un proyecto Firebase configurado.
 
 La app ya no usa `firebase-applet-config.json` como respaldo. Toda la configuración de Firebase se toma desde variables de entorno.
 
+## Modo pausa del frontend
+
+Si necesitas pausar temporalmente el sitio sin tocar backend, Firestore ni reglas, activa estas variables al momento del build:
+
+- `VITE_PROJECT_PAUSED=true`
+- `VITE_PROJECT_PAUSE_MESSAGE="Proyecto en pausa."`
+
+Con `VITE_PROJECT_PAUSED=true`, la aplicación renderiza una pantalla completa de pausa y deja de cargar la experiencia principal del sitio.
+
 ## Scripts
 
 - `npm run dev`: inicia Express con Vite en middleware; usa `PORT` o el puerto `3000`.
@@ -85,6 +94,8 @@ El despliegue se automatiza con tres workflows de GitHub Actions, ejecutables ma
 - `VITE_FIRESTORE_DATABASE_ID`
 - `VITE_ADMIN_EMAIL`
 - `VITE_API_BASE_URL`
+- `VITE_PROJECT_PAUSED`
+- `VITE_PROJECT_PAUSE_MESSAGE`
 
 `VITE_API_BASE_URL` debe apuntar a la URL pública de Cloud Run, por ejemplo:
 `https://tu-servicio-abcdef-uc.a.run.app`
