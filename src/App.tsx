@@ -158,6 +158,12 @@ export default function App() {
       snap.forEach((doc) => {
         list.push(normalizeRoom(doc.data(), doc.id));
       });
+      list.sort((firstRoom, secondRoom) => (
+        firstRoom.name.localeCompare(secondRoom.name, "es", {
+          numeric: true,
+          sensitivity: "base",
+        }) || firstRoom.id.localeCompare(secondRoom.id)
+      ));
       setRooms(list);
     } catch (err) {
       console.error("[firestore] Failed to fetch rooms.", err);
