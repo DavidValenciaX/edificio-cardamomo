@@ -16,7 +16,7 @@ import { buildDefaultRoomFeatures, DEFAULT_HERO_PLACEHOLDER, DEFAULT_LOGO_PLACEH
 import { optimizeRoomImage } from "../lib/imageOptimization";
 import { getOccupancyPriceOptions, getRoomStartingPrice } from "../lib/pricing";
 import { buildAvailabilityDateSets, datesForInclusiveRange, formatAvailabilityDate, getAvailabilityStatus, getBookingsForDate, getCalendarDays, getTodayDateString, isPastAvailabilityDate, selectDateForRange, type AvailabilityStatus } from "../lib/availability";
-import { datesForRange, normalizeDateList } from "../lib/ical";
+import { datesForRange, filterDateListFrom, normalizeDateList } from "../lib/ical";
 import { Booking, PublicContent, Room, RoomFeatures, RoomIntegration, Settings } from "../types";
 import PublicContentEditor from "./PublicContentEditor";
 import {
@@ -871,7 +871,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
         ? roomData.manualBlockedDates
         : currentBlocked;
       const currentExternal = Array.isArray(roomData.externalBlockedDates)
-        ? roomData.externalBlockedDates
+        ? filterDateListFrom(roomData.externalBlockedDates.filter((date): date is string => typeof date === "string"))
         : [];
       const latestBookingsSnap = await getDocs(collection(db, "bookings"));
       const confirmedReservationDates = latestBookingsSnap.docs
@@ -884,7 +884,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       if (action === "block") {
         const datesToBlock = selectedDates.filter((dateStr) => !protectedDates.has(dateStr));
         const nextManual = normalizeDateList([...currentManual, ...datesToBlock]);
-        const nextBlocked = normalizeDateList([
+        const nextBlocked = filterDateListFrom([
           ...nextManual,
           ...currentExternal,
           ...confirmedReservationDates,
@@ -903,7 +903,7 @@ export default function AdminPanel({ rooms, onRefreshRooms, publicContent, onPub
       } else {
         const datesToRelease = currentManual.filter((dateStr) => selectedDateSet.has(dateStr));
         const nextManual = normalizeDateList(currentManual.filter((dateStr) => !selectedDateSet.has(dateStr)));
-        const nextBlocked = normalizeDateList([
+        const nextBlocked = filterDateListFrom([
           ...nextManual,
           ...currentExternal,
           ...confirmedReservationDates,

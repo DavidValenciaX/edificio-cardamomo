@@ -23,6 +23,7 @@ export interface ICalSyncInput {
   confirmedBookings: ICalBookingRange[];
   airbnbIcalUrl?: string;
   bookingIcalUrl?: string;
+  todayDate?: string;
 }
 
 export interface ICalSyncResult {
@@ -131,6 +132,20 @@ function isValidDateString(value: string): boolean {
     && date.getUTCDate() === day;
 }
 
+/** Returns today's calendar date in the property's timezone. */
+export function getTodayDateString(now = new Date(), timeZone = "America/Bogota"): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === "year")?.value || "0000";
+  const month = parts.find((part) => part.type === "month")?.value || "00";
+  const day = parts.find((part) => part.type === "day")?.value || "00";
+  return `${year}-${month}-${day}`;
+}
+
 function dateToString(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
@@ -154,6 +169,12 @@ export function datesForRange(checkIn: string, checkOut: string): string[] {
     current = addDays(current, 1);
   }
   return dates;
+}
+
+/** Keeps valid availability dates from today onward, including today. */
+export function filterDateListFrom(dates: string[], fromDate = getTodayDateString()): string[] {
+  const normalizedFromDate = isValidDateString(fromDate) ? fromDate : getTodayDateString();
+  return normalizeDateList(dates).filter((date) => date >= normalizedFromDate);
 }
 
 /**
@@ -446,6 +467,7 @@ async function fetchSourceDates(
   sourceName: string,
   url: string,
   fetcher: ICalFetcher,
+  todayDate: string,
 ): Promise<ICalSourceFetchResult> {
   const startedAt = Date.now();
   const urlSummary = summarizeSourceUrl(url);
@@ -479,15 +501,19 @@ async function fetchSourceDates(
     try {
       const parsed = parseICalDocumentDetails(rawText);
       const warnings: string[] = [];
+      const activeDates = filterDateListFrom(parsed.blockedDates, todayDate);
       if (parsed.eventCount === 0) {
         warnings.push("Documento iCal válido, pero sin eventos VEVENT.");
       }
       if (parsed.incompleteEventCount > 0) {
         warnings.push(`Se ignoraron ${parsed.incompleteEventCount} eventos incompletos sin DTSTART/DTEND.`);
       }
+      if (activeDates.length < parsed.blockedDates.length) {
+        warnings.push(`Se ignoraron ${parsed.blockedDates.length - activeDates.length} fechas externas anteriores a ${todayDate}.`);
+      }
 
       return {
-        dates: parsed.blockedDates,
+        dates: activeDates,
         diagnostic: {
           sourceName,
           configured: true,
@@ -501,8 +527,8 @@ async function fetchSourceDates(
           eventCount: parsed.eventCount,
           completeEventCount: parsed.completeEventCount,
           incompleteEventCount: parsed.incompleteEventCount,
-          blockedDatesCount: parsed.blockedDates.length,
-          ...getDateRangePreview(parsed.blockedDates),
+          blockedDatesCount: activeDates.length,
+          ...getDateRangePreview(activeDates),
           warnings,
           error: null,
         },
@@ -567,6 +593,7 @@ export async function syncRoomAvailability(
   fetcher: ICalFetcher = (url) => fetch(url),
 ): Promise<ICalSyncResult> {
   const startedAt = new Date();
+  const todayDate = isValidDateString(input.todayDate || "") ? input.todayDate! : getTodayDateString();
   const externalSources = [
     { name: "Airbnb", url: input.airbnbIcalUrl?.trim() || "" },
     { name: "Booking.com", url: input.bookingIcalUrl?.trim() || "" },
@@ -575,11 +602,12 @@ export async function syncRoomAvailability(
   const manualBlockedDates = normalizeDateList(input.manualBlockedDates || []);
   const nextExternalBlockedDates: string[] = [];
   const sourceDiagnostics: ICalSourceDiagnostic[] = [];
-  const confirmedBookingDates = buildBlockedDateProjection({
-    confirmedBookings: input.confirmedBookings,
-  }).confirmedBookingDates;
-  const previousBlockedDates = normalizeDateList(input.existingBlockedDates);
-  const previousExternalBlockedDates = normalizeDateList(input.existingExternalBlockedDates || []);
+  const confirmedBookingDates = filterDateListFrom(
+    buildBlockedDateProjection({ confirmedBookings: input.confirmedBookings }).confirmedBookingDates,
+    todayDate,
+  );
+  const previousBlockedDates = filterDateListFrom(input.existingBlockedDates, todayDate);
+  const previousExternalBlockedDates = filterDateListFrom(input.existingExternalBlockedDates || [], todayDate);
 
   for (const source of externalSources) {
     if (!source.url) {
@@ -607,7 +635,7 @@ export async function syncRoomAvailability(
 
     const sourceStartedAt = Date.now();
     try {
-      const sourceResult = await fetchSourceDates(source.name, source.url, fetcher);
+      const sourceResult = await fetchSourceDates(source.name, source.url, fetcher, todayDate);
       nextExternalBlockedDates.push(...sourceResult.dates);
       sourceDiagnostics.push(sourceResult.diagnostic);
     } catch (error) {
@@ -685,11 +713,14 @@ export async function syncRoomAvailability(
   }
 
   const normalizedExternalBlockedDates = normalizeDateList(nextExternalBlockedDates);
-  const normalizedBlockedDates = buildBlockedDateProjection({
-    manualBlockedDates,
-    externalBlockedDates: normalizedExternalBlockedDates,
-    confirmedBookings: input.confirmedBookings,
-  }).blockedDates;
+  const normalizedBlockedDates = filterDateListFrom(
+    buildBlockedDateProjection({
+      manualBlockedDates,
+      externalBlockedDates: normalizedExternalBlockedDates,
+      confirmedBookings: input.confirmedBookings,
+    }).blockedDates,
+    todayDate,
+  );
   const summary = buildSyncSummary({
     startedAt,
     configuredSourcesCount,

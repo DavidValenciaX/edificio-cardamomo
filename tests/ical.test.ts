@@ -4,6 +4,7 @@ import {
   buildBlockedDateProjection,
   buildICalContent,
   datesForRange,
+  filterDateListFrom,
   parseICalContent,
   syncRoomAvailability,
 } from "../src/lib/ical.ts";
@@ -25,6 +26,8 @@ const airbnbFeed = [
   "END:VEVENT",
   "END:VCALENDAR",
 ].join("\r\n");
+
+const testTodayDate = "2026-08-01";
 
 test("datesForRange preserves calendar dates for reservation nights", () => {
   assert.deepEqual(datesForRange("2026-08-05", "2026-08-07"), [
@@ -55,6 +58,13 @@ test("buildBlockedDateProjection blocks overlapping sources without choosing a p
       confirmedBookingDates: ["2026-08-10", "2026-08-11"],
       blockedDates: ["2026-08-10", "2026-08-11"],
     },
+  );
+});
+
+test("filterDateListFrom removes expired dates but keeps today and future dates", () => {
+  assert.deepEqual(
+    filterDateListFrom(["2026-07-31", "2026-08-01", "2026-08-03", "invalid"], testTodayDate),
+    ["2026-08-01", "2026-08-03"],
   );
 });
 
@@ -101,6 +111,7 @@ test("syncRoomAvailability merges local and external dates and deduplicates them
       ],
       airbnbIcalUrl: "https://example.test/airbnb.ics",
       bookingIcalUrl: "https://example.test/booking.ics",
+      todayDate: testTodayDate,
     },
     async (url) => {
       requestedUrls.push(url);
@@ -150,6 +161,7 @@ test("syncRoomAvailability preserves manual blocks in the rebuilt projection", a
         {checkIn: "2026-08-10", checkOut: "2026-08-12"},
       ],
       airbnbIcalUrl: "https://example.test/airbnb.ics",
+      todayDate: testTodayDate,
     },
     async () => makeResponse(airbnbFeed),
   );
@@ -176,6 +188,7 @@ test("syncRoomAvailability preserves the last projection when a configured feed 
       confirmedBookings: [],
       airbnbIcalUrl: "https://example.test/airbnb.ics",
       bookingIcalUrl: "https://example.test/booking.ics",
+      todayDate: testTodayDate,
     },
     async (url) => url.includes("airbnb")
       ? makeResponse("upstream unavailable", 503)
@@ -196,6 +209,7 @@ test("syncRoomAvailability rejects invalid iCal instead of clearing dates", asyn
       existingBlockedDates: ["2026-10-01"],
       confirmedBookings: [],
       bookingIcalUrl: "https://example.test/booking.ics",
+      todayDate: testTodayDate,
     },
     async () => makeResponse("not an iCal document"),
   );
@@ -203,6 +217,28 @@ test("syncRoomAvailability rejects invalid iCal instead of clearing dates", asyn
   assert.equal(result.shouldUpdate, false);
   assert.match(result.errors[0], /documento iCal válido/);
   assert.deepEqual(result.blockedDates, ["2026-10-01"]);
+});
+
+test("syncRoomAvailability excludes iCal dates before the synchronization day", async () => {
+  const result = await syncRoomAvailability(
+    {
+      roomId: "apartamento-105",
+      roomName: "Apartamento 105",
+      existingBlockedDates: ["2026-08-10", "2026-08-12"],
+      existingExternalBlockedDates: ["2026-08-10", "2026-08-12"],
+      confirmedBookings: [],
+      airbnbIcalUrl: "https://example.test/airbnb.ics",
+      todayDate: "2026-08-12",
+    },
+    async () => makeResponse(airbnbFeed),
+  );
+
+  assert.deepEqual(result.externalBlockedDates, ["2026-08-12"]);
+  assert.deepEqual(result.blockedDates, ["2026-08-12"]);
+  assert.equal(
+    result.sourceDiagnostics.some((diagnostic) => diagnostic.warnings.some((warning) => warning.includes("fechas externas anteriores a 2026-08-12"))),
+    true,
+  );
 });
 
 test("buildICalContent exports the complete blocked-date projection", () => {

@@ -15,6 +15,7 @@ import {
   buildBlockedDateProjection,
   buildICalContent,
   buildSyncSummary,
+  filterDateListFrom,
   normalizeDateList,
   syncRoomAvailability,
 } from "./src/lib/ical.ts";
@@ -316,9 +317,9 @@ async function updateRoomAvailabilityProjection(
       ? normalizeStoredDateList(roomData.manualBlockedDates)
       : previousBlockedDates;
     const currentExternalBlockedDates = normalizeStoredDateList(roomData.externalBlockedDates);
-    const nextExternalBlockedDates = externalBlockedDates === undefined
-      ? currentExternalBlockedDates
-      : normalizeDateList(externalBlockedDates);
+    const nextExternalBlockedDates = filterDateListFrom(
+      externalBlockedDates === undefined ? currentExternalBlockedDates : externalBlockedDates,
+    );
     const confirmedBookings: ICalBookingRange[] = confirmedBookingsSnap.docs.map((bookingDoc) => {
       const booking = bookingDoc.data();
       return {
@@ -331,19 +332,21 @@ async function updateRoomAvailabilityProjection(
       externalBlockedDates: nextExternalBlockedDates,
       confirmedBookings,
     });
+    const activeBlockedDates = filterDateListFrom(projection.blockedDates);
+    const activeConfirmedBookingDates = filterDateListFrom(projection.confirmedBookingDates);
 
     transaction.update(roomRef, {
-      blockedDates: projection.blockedDates,
+      blockedDates: activeBlockedDates,
       manualBlockedDates,
       externalBlockedDates: nextExternalBlockedDates,
     });
 
     return {
-      blockedDates: projection.blockedDates,
+      blockedDates: activeBlockedDates,
       manualBlockedDates,
       externalBlockedDates: nextExternalBlockedDates,
       confirmedBookingsCount: confirmedBookings.length,
-      confirmedBookingDatesCount: projection.confirmedBookingDates.length,
+      confirmedBookingDatesCount: activeConfirmedBookingDates.length,
       previousBlockedDates,
       previousExternalBlockedDates: currentExternalBlockedDates,
     };

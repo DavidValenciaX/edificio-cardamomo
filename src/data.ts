@@ -1,4 +1,5 @@
 import { FaqItem, NearbyPlace, PublicContent, PublicPolicies, Room, RoomFeatures, RoomPricing } from "./types";
+import { filterDateListFrom } from "./lib/ical";
 
 export const DEFAULT_LOGO_PLACEHOLDER =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='64' fill='%23E5E7EB'/%3E%3Ccircle cx='64' cy='46' r='20' fill='%239CA3AF'/%3E%3Cpath d='M32 104c4-18 18-30 32-30s28 12 32 30' fill='%239CA3AF'/%3E%3C/svg%3E";
@@ -52,14 +53,15 @@ export function normalizeRoom(raw: unknown, id: string): Room {
     basePricePerNight: asNonNegativeNumber(rawPricing.basePricePerNight, legacyPricePerNight),
     extraGuestPricePerNight: asNonNegativeNumber(rawPricing.extraGuestPricePerNight, 0),
   };
-  const blockedDates = Array.isArray(input.blockedDates)
+  const storedBlockedDates = Array.isArray(input.blockedDates)
     ? input.blockedDates.filter((date): date is string => typeof date === "string")
     : [];
+  const blockedDates = filterDateListFrom(storedBlockedDates);
   const manualBlockedDates = Array.isArray(input.manualBlockedDates)
     ? input.manualBlockedDates.filter((date): date is string => typeof date === "string")
     : blockedDates;
   const externalBlockedDates = Array.isArray(input.externalBlockedDates)
-    ? input.externalBlockedDates.filter((date): date is string => typeof date === "string")
+    ? filterDateListFrom(input.externalBlockedDates.filter((date): date is string => typeof date === "string"))
     : [];
 
   return {
